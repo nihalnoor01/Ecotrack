@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EcoTrack — Login</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <style>
+    :root {
+      --bg: #000000;
+      --surface: #111111;
+      --accent: #00ff88;
+      --accent2: #00d4ff;
+      --text: #f8fafc;
+      --text2: #94a3b8;
+      --border: #2a2a2a;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+    .login-container {
+      width: 100%;
+      max-width: 420px;
+      padding: 40px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      text-align: center;
+      position: relative;
+      z-index: 1;
+    }
+    .logo {
+      width: 64px;
+      height: 64px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 16px;
+      display: grid;
+      place-items: center;
+      font-size: 32px;
+      color: #fff;
+      margin: 0 auto 20px;
+    }
+    h1 {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 28px;
+      margin-bottom: 8px;
+    }
+    p {
+      color: var(--text2);
+      font-size: 14px;
+      margin-bottom: 30px;
+    }
+    .role-options {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .role-card {
+      background: #1a1a1a;
+      border: 1px solid var(--border);
+      padding: 16px;
+      border-radius: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      transition: all 0.2s;
+      text-align: left;
+    }
+    .role-card:hover {
+      border-color: var(--accent);
+      background: rgba(0, 255, 136, 0.05);
+    }
+    .role-card.active {
+      border-color: var(--accent);
+      background: rgba(0, 255, 136, 0.1);
+    }
+    .role-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: #222;
+      display: grid;
+      place-items: center;
+      font-size: 18px;
+      color: var(--accent);
+    }
+    .role-info b { display: block; font-size: 14px; color: #fff; }
+    .role-info span { font-size: 11px; color: var(--text2); }
+
+    .login-btn {
+      width: 100%;
+      padding: 14px;
+      border-radius: 12px;
+      border: none;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff;
+      font-weight: 700;
+      font-size: 16px;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .login-btn:hover { opacity: 0.9; }
+
+    .bg-glow {
+      position: absolute;
+      width: 300px;
+      height: 300px;
+      background: radial-gradient(circle, rgba(0, 255, 136, 0.15) 0%, transparent 70%);
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-glow"></div>
+  <div class="login-container">
+    <div class="logo"><i class="fas fa-recycle"></i></div>
+    <h1>Welcome to EcoTrack</h1>
+    <p>Select your role to continue to the dashboard</p>
+
+    <div class="role-options">
+      <div class="role-card active" onclick="selectRole('user', this)">
+        <div class="role-icon"><i class="fas fa-user"></i></div>
+        <div class="role-info">
+          <b>I am a Resident</b>
+          <span>Access rewards and check bin fill levels</span>
+        </div>
+      </div>
+      <div class="role-card" onclick="selectRole('collector', this)">
+        <div class="role-icon"><i class="fas fa-truck"></i></div>
+        <div class="role-info">
+          <b>I am a Waste Collector</b>
+          <span>Full access to routes, analytics and config</span>
+        </div>
+      </div>
+    </div>
+
+    <button class="login-btn" onclick="login()">Enter Dashboard</button>
+  </div>
+
+  <script>
+    let selectedRole = 'user';
+
+    function selectRole(role, el) {
+      selectedRole = role;
+      document.querySelectorAll('.role-card').forEach(c => c.classList.remove('active'));
+      el.classList.add('active');
+    }
+
+    function login() {
+      localStorage.setItem('ecoTrack_role', selectedRole);
+      window.location.href = 'index.html';
+    }
+  </script>
+</body>
+</html>

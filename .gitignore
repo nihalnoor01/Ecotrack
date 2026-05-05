@@ -1,0 +1,9 @@
+node_modules/
+*.sqlite
+.env
+.vscode/
+dist/
+build/
+bin/
+obj/
+esp32_firmware.ino
