@@ -4,35 +4,35 @@ A professional-grade IoT solution for real-time waste monitoring and route optim
 
 ## Features
 - **Real-time Monitoring**: Visualize bin fill levels across the campus.
-- **ESP32 Integration**: Live sensor data transmission using ultrasonic sensors.
-- **Reward System**: Gamified disposal with QR code-based point claims.
+- **Backend Persistence**: Secure data storage using SQLite.
+- **Reward System**: Gamified disposal logic and claim management.
 - **Route Optimization**: Map-based visualization for efficient waste collection.
 - **Responsive Dashboard**: Premium UI built with Vanilla JS and CSS.
 
 ## Project Structure
-- `esp32_firmware.ino`: Firmware for the ESP32 hardware.
 - `server.js`: Node.js/Express backend with SQLite for data persistence.
 - `index.html` / `app.js` / `style.css`: The web dashboard.
 - `login.html`: Secure access to the dashboard.
+- `.env.example`: Template for environment variables.
 
 ## Setup Instructions
-
-### Hardware (ESP32)
-1. Open `esp32_firmware.ino` in Arduino IDE.
-2. Update the WiFi credentials (`ssid` and `password`).
-3. Set the `serverIP` to your hosted backend URL.
-4. Upload to your ESP32.
 
 ### Backend (Server)
 1. Install dependencies:
    ```bash
    npm install
    ```
-2. Start the server:
+2. Set up environment variables:
+   - Copy `.env.example` to `.env`.
+   - Update the `PORT` if necessary.
+3. Start the server:
    ```bash
    node server.js
    ```
-3. The dashboard will be available at `http://localhost:3000`.
+4. The dashboard will be available at `http://localhost:3000`.
+
+## Hardware Note
+The ESP32 firmware is not included in this repository to protect hardware credentials. Please refer to your local backup for the `.ino` file.
 
 ## License
 MIT
