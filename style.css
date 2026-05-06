@@ -742,16 +742,24 @@ body.map-is-fullscreen .main-content {
   .bin-cards-grid {
     grid-template-columns: 1fr;
   }
-  .map-layout {
-    flex-direction: column;
-  }
-  .route-panel {
-    width: 100%;
-    order: 2;
-  }
   #mainMap {
     order: 1;
+    height: 400px !important;
+    width: 100% !important;
     min-height: 400px !important;
+  }
+  .map-layout {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+  .route-panel {
+    width: 100% !important;
+    order: 2;
+    margin-top: 15px;
+  }
+  #miniMap {
+    height: 300px !important;
   }
   .page-header h1 {
     font-size: 22px;
