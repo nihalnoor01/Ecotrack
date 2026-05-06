@@ -62,6 +62,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }, 300); // Small delay to ensure library is ready
   fetchBinsData();
   updateRewardsUI();
+  fetchLeaderboard();
   setInterval(fetchBinsData, 5000);
 });
 
@@ -75,6 +76,13 @@ function showPage(pageId, element) {
   if (element) element.classList.add('active');
   const span = element ? element.querySelector('span') : null;
   document.getElementById('pageTitle').innerText = span ? span.innerText : pageId;
+  
+  // Close sidebar on mobile after navigation
+  if (window.innerWidth <= 1024) {
+    document.getElementById('sidebar').classList.remove('remove'); // Fix: should be remove('open')
+    document.getElementById('sidebar').classList.remove('open');
+  }
+
   if (pageId === 'map'       && mainMap) setTimeout(() => mainMap.invalidateSize(), 150);
   if (pageId === 'dashboard' && miniMap) setTimeout(() => miniMap.invalidateSize(), 150);
 }
@@ -1045,11 +1053,39 @@ function clearAlerts() {
 
 function fetchLeaderboard() {
   const icon = document.getElementById('lbRefreshIcon');
+  const lbBody = document.getElementById('leaderboardBody');
   if (icon) icon.classList.add('fa-spin');
+  
+  // Mock leaderboard data
+  const mockLB = [
+    { rank: 1, user: "Rohan_LPU", points: 4520, badge: "🏆 Champ" },
+    { rank: 2, user: "Simran_K", points: 3890, badge: "⭐ Elite" },
+    { rank: 3, user: "Nihal_Eco", points: userPoints, badge: "🔥 You" },
+    { rank: 4, user: "Amit_99", points: 2150, badge: "🌱 Pro" },
+    { rank: 5, user: "Sneha_02", points: 1840, badge: "🍃 Active" }
+  ].sort((a, b) => b.points - a.points);
+
   setTimeout(() => {
     if (icon) icon.classList.remove('fa-spin');
+    if (lbBody) {
+      lbBody.innerHTML = mockLB.map((u, i) => `
+        <tr ${u.user.includes('You') ? 'style="background:rgba(255,255,255,0.05)"' : ''}>
+          <td data-label="Rank" style="font-weight:700">${i + 1}</td>
+          <td data-label="Resident">
+            <div style="display:flex; align-items:center; gap:10px">
+              <div class="user-avatar" style="width:28px; height:28px; font-size:12px">${u.user.charAt(0)}</div>
+              <div>
+                <div style="font-weight:600; font-size:13px">${u.user}</div>
+                <div style="font-size:10px; color:var(--text2)">${u.badge}</div>
+              </div>
+            </div>
+          </td>
+          <td data-label="Points" style="font-weight:700; color:var(--accent)">${u.points.toLocaleString()}</td>
+        </tr>
+      `).join('');
+    }
     showToast("Leaderboard updated!", "success");
-    updateRewardsUI(); // Refresh UI after potential leaderboard changes
+    updateRewardsUI();
   }, 800);
 }
 
@@ -1087,10 +1123,10 @@ function updateRewardsUI() {
     } else {
       historyBody.innerHTML = rewardHistory.map(h => `
         <tr>
-          <td>${h.time}</td>
-          <td>${h.binName}</td>
-          <td>${h.volume}</td>
-          <td style="color:var(--green); font-weight:700">+${h.points}</td>
+          <td data-label="Date">${h.time}</td>
+          <td data-label="Bin">${h.binName}</td>
+          <td data-label="Volume">${h.volume}</td>
+          <td data-label="Points" style="color:var(--green); font-weight:700">+${h.points}</td>
         </tr>
       `).join('');
     }

@@ -688,3 +688,130 @@ body.map-is-fullscreen .main-content {
   border-radius: 0 !important;
   z-index: 10000 !important;
 }
+/* ===== RESPONSIVE MEDIA QUERIES ===== */
+
+/* Tablets & Small Laptops (Max 1024px) */
+@media (max-width: 1024px) {
+  :root {
+    --sidebar-w: 0px;
+  }
+  .sidebar {
+    transform: translateX(-100%);
+    width: 280px;
+  }
+  .sidebar.open {
+    transform: translateX(0);
+  }
+  .topbar {
+    left: 0;
+  }
+  .main-content {
+    margin-left: 0;
+  }
+  .menu-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .dash-grid {
+    grid-template-columns: 1fr;
+  }
+  .bins-overview, .chart-card, .activity-card, .map-preview-card {
+    grid-column: 1;
+    grid-row: auto;
+  }
+}
+
+/* Mobile Phones (Max 768px) */
+@media (max-width: 768px) {
+  .topbar {
+    padding: 0 16px;
+  }
+  .topbar-right .topbar-time {
+    display: none;
+  }
+  .main-content {
+    padding: 20px 16px;
+  }
+  .kpi-grid {
+    grid-template-columns: 1fr;
+  }
+  .bin-cards-grid {
+    grid-template-columns: 1fr;
+  }
+  .map-layout {
+    flex-direction: column;
+  }
+  .route-panel {
+    width: 100%;
+    order: 2;
+  }
+  #mainMap {
+    order: 1;
+    min-height: 400px !important;
+  }
+  .page-header h1 {
+    font-size: 22px;
+  }
+  
+  /* Tables Card View for Mobile */
+  .bin-table thead {
+    display: none;
+  }
+  .bin-table, .bin-table tbody, .bin-table tr, .bin-table td {
+    display: block;
+    width: 100%;
+  }
+  .bin-table tr {
+    margin-bottom: 15px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px;
+  }
+  .bin-table td {
+    text-align: right;
+    padding: 8px 10px;
+    border: none;
+    position: relative;
+  }
+  .bin-table td::before {
+    content: attr(data-label);
+    position: absolute;
+    left: 10px;
+    font-weight: 600;
+    color: var(--text2);
+    font-size: 11px;
+    text-transform: uppercase;
+  }
+  
+  /* Rewards & History mobile spacing */
+  .reward-history-item {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 10px;
+  }
+  .reward-history-item div:last-child {
+    align-self: flex-end;
+  }
+}
+
+/* Extra Small Devices (Max 480px) */
+@media (max-width: 480px) {
+  .topbar-title {
+    font-size: 15px;
+  }
+  .page-header h1 {
+    font-size: 20px;
+  }
+  .modal {
+    width: 95%;
+    padding: 20px 15px;
+  }
+  .kpi-value {
+    font-size: 24px;
+  }
+}
