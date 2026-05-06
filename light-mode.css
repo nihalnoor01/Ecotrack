@@ -1,0 +1,117 @@
+
+/* =========================================
+   FLAWLESS LIGHT MODE
+   ========================================= */
+body.light-mode {
+  --bg: #f3f4f6;
+  --bg2: #e5e7eb;
+  --surface: #ffffff;
+  --surface2: #f9fafb;
+  --border: #d1d5db;
+  --accent: #059669; /* Darker green for contrast */
+  --accent2: #0284c7; /* Darker blue for contrast */
+  --green: #10b981;
+  --yellow: #d97706; /* Darker yellow/orange */
+  --red: #dc2626; /* Darker red */
+  --text: #111827;
+  --text2: #4b5563;
+}
+
+/* Base structural overrides */
+body.light-mode .topbar {
+  background: rgba(255,255,255,0.85);
+  box-shadow: 0 1px 15px rgba(0,0,0,0.05);
+}
+body.light-mode .sidebar {
+  background: #ffffff;
+  box-shadow: 1px 0 15px rgba(0,0,0,0.03);
+}
+
+/* Text & Headings */
+body.light-mode .logo-name,
+body.light-mode .kpi-value,
+body.light-mode .donut-center span,
+body.light-mode .bin-detail-name,
+body.light-mode .bin-percent-big,
+body.light-mode .bin-mini-percent,
+body.light-mode .bin-mini-name,
+body.light-mode .activity-item strong,
+body.light-mode .stat-item span,
+body.light-mode .route-info strong,
+body.light-mode .route-stats span,
+body.light-mode .alert-title,
+body.light-mode .modal-header h2,
+body.light-mode .bin-meta-item span {
+  color: var(--text);
+}
+
+body.light-mode .page-header h1 {
+  background: none;
+  -webkit-text-fill-color: var(--text);
+  color: var(--text);
+}
+
+/* Backgrounds & Boxes */
+body.light-mode .kpi-card,
+body.light-mode .dash-card,
+body.light-mode .bin-detail-card,
+body.light-mode .route-panel,
+body.light-mode .modal {
+  background: var(--surface);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.02);
+}
+
+body.light-mode .bin-mini-card,
+body.light-mode .activity-item,
+body.light-mode .bin-meta-item,
+body.light-mode .stat-item,
+body.light-mode .route-item,
+body.light-mode .filter-btn,
+body.light-mode .search-box,
+body.light-mode .map-ctrl-btn {
+  background: var(--surface2);
+}
+
+/* Gauges and Fills */
+body.light-mode .bin-fill-bar,
+body.light-mode .gauge-track {
+  background: var(--border);
+}
+body.light-mode .gauge-fill::after {
+  background: rgba(0,0,0,0.15);
+}
+
+/* Map Popups */
+body.light-mode .leaflet-popup-content-wrapper,
+body.light-mode .leaflet-popup-tip {
+  background: #ffffff;
+  color: var(--text);
+  border-color: var(--border);
+  box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+}
+
+/* Inputs & Form Elements */
+body.light-mode .form-group input,
+body.light-mode .form-group select {
+  background: var(--surface);
+  color: var(--text);
+}
+
+/* Icons & Avatars (Keep white inside colorful backgrounds) */
+body.light-mode .kpi-icon,
+body.light-mode .logo-icon,
+body.light-mode .user-avatar,
+body.light-mode .map-ctrl-btn.green {
+  color: #ffffff;
+}
+
+/* Badges */
+body.light-mode .nav-badge,
+body.light-mode .notif-count {
+  color: #ffffff;
+}
+
+/* Chart Canvas adjustments */
+body.light-mode canvas {
+  filter: none;
+}

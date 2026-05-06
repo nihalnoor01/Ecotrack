@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title>EcoTrack — Smart Waste Fill Level & Route Optimization</title>
+  <meta name="description"
+    content="Real-time smart waste bin monitoring and route optimization powered by ESP32 ultrasonic sensors." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://unpkg.com/html5-qrcode"></script>
+</head>
+
+<body>
+  <div class="particles" id="particles"></div>
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-text">
+        <span class="logo-name">ECOTRACK</span>
+        <span class="logo-sub">Platform</span>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <a href="#" class="nav-item active" id="nav-dashboard" data-page="dashboard" onclick="showPage('dashboard',this)">
+        <i class="fas fa-tachometer-alt"></i><span>Dashboard</span>
+      </a>
+      <a href="#" class="nav-item" id="nav-bins" data-page="bins" onclick="showPage('bins',this)">
+        <i class="fas fa-trash-alt"></i><span>Bin Monitor</span>
+        <span class="nav-badge" id="alertBadge">0</span>
+      </a>
+      <a href="#" class="nav-item" id="nav-map" data-page="map" onclick="showPage('map',this)">
+        <i class="fas fa-map-marked-alt"></i><span>Route Map</span>
+      </a>
+      <a href="#" class="nav-item" id="nav-rewards" data-page="rewards" onclick="showPage('rewards',this)">
+        <i class="fas fa-gift"></i><span>Rewards</span>
+      </a>
+      <a href="#" class="nav-item" id="nav-leaderboard" data-page="leaderboard" onclick="showPage('leaderboard',this)">
+        <i class="fas fa-trophy"></i><span>Leaderboard</span>
+      </a>
+    </nav>
+    <div class="sidebar-status">
+      <div class="status-dot" id="connDot"></div>
+      <span id="connStatus">Connecting…</span>
+    </div>
+  </aside>
+
+  <!-- TOPBAR -->
+  <header class="topbar">
+    <button class="menu-btn" onclick="toggleSidebar()"><i class="fas fa-bars"></i></button>
+    <div class="topbar-title" id="pageTitle">Dashboard</div>
+    <div class="topbar-right">
+      <div class="theme-toggle" id="themeToggleBtn" onclick="toggleTheme()"
+        style="cursor:pointer; font-size:18px; color:var(--text2); transition:color 0.2s;">
+        <i class="fas fa-moon" id="themeIcon"></i>
+      </div>
+      <div class="topbar-time" id="clock"></div>
+      <div class="notification-btn" onclick="showPage('alerts',document.querySelector('[data-page=alerts]'))">
+        <i class="fas fa-bell"></i>
+        <span class="notif-count" id="notifCount">0</span>
+      </div>
+      <div id="userWelcome" style="font-size: 13px; color: var(--text2); font-weight: 500; margin: 0 10px;"></div>
+      <div class="profile-dropdown-container" style="position: relative;">
+        <div class="user-avatar" onclick="toggleProfileDropdown()" style="cursor:pointer; background:var(--surface2); border:1px solid var(--border); color:var(--text);" title="Profile">
+          <i class="fas fa-user"></i>
+        </div>
+        <div class="profile-dropdown-menu" id="profileDropdown" style="display: none; position: absolute; top: 130%; right: 0; background: var(--surface); border: 1px solid var(--border); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); width: 160px; z-index: 1000; box-shadow: 0 10px 30px rgba(0,0,0,0.3);">
+          <div class="dropdown-item" onclick="logout()" style="padding: 14px 16px; cursor: pointer; display: flex; align-items: center; gap: 12px; color: var(--red); font-size: 13px; font-family: 'Inter', sans-serif; font-weight: 500; transition: background 0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.1)'" onmouseout="this.style.background='transparent'">
+            <i class="fas fa-sign-out-alt"></i> Logout
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN -->
+  <main class="main-content">
+
+    <!-- DASHBOARD -->
+    <section class="page active" id="page-dashboard">
+      <div class="page-header">
+        <h1>Overview Dashboard</h1>
+        <p>Real-time waste bin monitoring across your collection zones</p>
+      </div>
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-icon" style="background:var(--surface2);border:1px solid var(--border)"><i class="fas fa-trash"></i></div>
+          <div class="kpi-info"><span class="kpi-value" id="kpiTotal">0</span><span class="kpi-label">Total Bins</span></div>
+          <div class="kpi-trend up">Active</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon" style="background:var(--surface2);border:1px solid var(--border)"><i class="fas fa-exclamation-triangle"></i></div>
+          <div class="kpi-info"><span class="kpi-value" id="kpiCritical">0</span><span class="kpi-label">Critical (&gt;80%)</span></div>
+          <div class="kpi-trend" id="critTrend">Monitoring</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon" style="background:var(--surface2);border:1px solid var(--border)"><i class="fas fa-chart-bar"></i></div>
+          <div class="kpi-info"><span class="kpi-value" id="kpiAvg">0%</span><span class="kpi-label">Avg Fill Level</span></div>
+          <div class="kpi-trend" id="avgTrend">—</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon" style="background:var(--surface2);border:1px solid var(--border)"><i class="fas fa-route"></i></div>
+          <div class="kpi-info"><span class="kpi-value" id="kpiRoute">0</span><span class="kpi-label">Need Pickup</span></div>
+          <div class="kpi-trend">Route Ready</div>
+        </div>
+      </div>
+      <div class="dash-grid">
+        <div class="dash-card bins-overview">
+          <div class="card-header">
+            <h2><i class="fas fa-trash-alt"></i> Live Bin Status</h2>
+            <button class="refresh-btn" onclick="fetchBinsData()"><i class="fas fa-sync-alt" id="refreshIcon"></i></button>
+          </div>
+          <div class="bin-cards-grid" id="binCardsGrid"></div>
+        </div>
+        <div class="dash-card chart-card">
+          <div class="card-header">
+            <h2><i class="fas fa-chart-pie"></i> Fill Distribution</h2>
+          </div>
+          <div class="donut-wrap">
+            <canvas id="donutChart" width="220" height="220"></canvas>
+            <div class="donut-center"><span id="donutPercent">0%</span><small>Average</small></div>
+          </div>
+          <div class="donut-legend" id="donutLegend"></div>
+        </div>
+        <div class="dash-card activity-card">
+          <div class="card-header">
+            <h2><i class="fas fa-history"></i> Activity Feed</h2>
+            <button class="clear-btn" onclick="clearFeed()">Clear</button>
+          </div>
+          <div class="activity-list" id="activityFeed">
+            <div class="activity-item info">
+              <i class="fas fa-info-circle"></i>
+              <div><strong>System Started</strong><span>Connecting to ESP32 sensors…</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="dash-card map-preview-card">
+          <div class="card-header">
+            <h2><i class="fas fa-map"></i> Bin Locations</h2>
+            <button class="view-btn" onclick="showPage('map',document.querySelector('[data-page=map]'))">Full Map</button>
+          </div>
+          <div id="miniMap" style="height:220px;border-radius:12px;overflow:hidden;"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- BIN MONITOR -->
+    <section class="page" id="page-bins">
+      <div class="page-header">
+        <h1>Bin Monitor</h1>
+        <p>Detailed fill level readings from all ESP32 ultrasonic sensors</p>
+      </div>
+      <div class="filter-bar">
+        <button class="filter-btn active" onclick="filterBins('all',this)">All Bins</button>
+        <button class="filter-btn" onclick="filterBins('critical',this)">Critical</button>
+        <button class="filter-btn" onclick="filterBins('warning',this)">Warning</button>
+        <button class="filter-btn" onclick="filterBins('normal',this)">Normal</button>
+        <button class="filter-btn" onclick="filterBins('empty',this)">Empty</button>
+        <div class="search-box">
+          <i class="fas fa-search"></i>
+          <input type="text" id="binSearch" placeholder="Search bins…" oninput="searchBins(this.value)" />
+        </div>
+      </div>
+      <div class="bin-detail-grid" id="binDetailGrid"></div>
+    </section>
+
+    <!-- MAP -->
+    <section class="page" id="page-map">
+      <div class="page-header" id="mapPageHeader">
+        <h1>Route Optimization Map</h1>
+        <p>Intelligent collection route based on real-time fill levels</p>
+      </div>
+      <div class="map-controls" id="mapControls">
+        <button class="map-ctrl-btn active" onclick="mapFilter('all',this)"><i class="fas fa-th"></i> All Bins</button>
+        <button class="map-ctrl-btn" onclick="mapFilter('pickup',this)"><i class="fas fa-exclamation"></i> Need Pickup</button>
+        <div class="map-ctrl-slider" style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:6px 14px;">
+          <i class="fas fa-sliders-h" style="color:var(--accent);font-size:13px;"></i>
+          <span style="font-size:12px;white-space:nowrap;">Threshold:</span>
+          <input type="range" id="routeThreshold" min="0" max="100" value="80" style="width:90px;accent-color:var(--accent);" oninput="document.getElementById('thresholdVal').innerText=this.value+'%'" />
+          <span id="thresholdVal" style="font-size:12px;font-weight:700;color:var(--accent);min-width:32px;">80%</span>
+        </div>
+        <button class="map-ctrl-btn green" onclick="optimizeRoute()"><i class="fas fa-route"></i> Optimize Route</button>
+        <button class="map-ctrl-btn" onclick="clearRoute()"><i class="fas fa-times"></i> Clear Route</button>
+        <button class="map-ctrl-btn" id="fsBtn" onclick="toggleMapFullscreen()" title="Fullscreen"><i class="fas fa-expand" id="fsIcon"></i></button>
+      </div>
+      <div class="map-layout" id="mapLayout">
+        <div id="mainMap" style="flex:1;min-height:520px;border-radius:16px;"></div>
+        <div class="route-panel" id="routePanel">
+          <h3><i class="fas fa-list-ol"></i> Collection Route</h3>
+          <div id="routeList">
+            <p class="route-empty">Drag the 🚛 truck to your start position, set the threshold, then click "Optimize Route".</p>
+          </div>
+          <div class="route-stats" id="routeStats" style="display:none">
+            <div><i class="fas fa-trash"></i><span id="routeBinCount">0</span> bins</div>
+            <div><i class="fas fa-road"></i><span id="routeDist">0 km</span></div>
+            <div><i class="fas fa-clock"></i><span id="routeTime">0 min</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ALERTS -->
+    <section class="page" id="page-alerts">
+      <div class="page-header">
+        <h1>Alerts &amp; Notifications</h1>
+        <p>System alerts for overfilling prevention</p>
+      </div>
+      <div class="filter-bar">
+        <button class="filter-btn active" onclick="filterAlerts('all',this)">All</button>
+        <button class="filter-btn" onclick="filterAlerts('critical',this)">Critical</button>
+        <button class="filter-btn" onclick="filterAlerts('warning',this)">Warning</button>
+        <button class="filter-btn" onclick="filterAlerts('info',this)">Info</button>
+        <button class="clear-btn" style="margin-left:auto" onclick="clearAlerts()">Clear All</button>
+      </div>
+      <div class="activity-list" id="alertsList" style="padding:16px;"></div>
+    </section>
+
+    <!-- REWARDS -->
+    <section class="page" id="page-rewards">
+      <div class="page-header">
+        <h1>EcoRewards Program</h1>
+        <p>Earn points for every bit of waste you dispose correctly!</p>
+      </div>
+      <div class="kpi-grid">
+        <div class="kpi-card" style="grid-column: span 3; border-bottom: 4px solid var(--accent);">
+          <div class="kpi-icon" style="background:var(--surface2);border:1px solid var(--border)"><i class="fas fa-coins"></i></div>
+          <div class="kpi-info">
+            <span class="kpi-value" id="userPoints">0</span>
+            <span class="kpi-label">Current EcoPoints Balance</span>
+          </div>
+        </div>
+      </div>
+      <div class="dash-grid">
+        <div class="dash-card" style="grid-column: 1 / span 2;">
+          <div class="card-header">
+            <h2><i class="fas fa-qrcode"></i> Claim Rewards via QR</h2>
+            <div style="display:flex; gap:10px;">
+              <button class="save-btn" onclick="startQRScanner()"><i class="fas fa-camera"></i> Open Scanner</button>
+              <button class="view-btn" onclick="simulateWasteDisposal()">Simulate Disposal</button>
+            </div>
+          </div>
+          <div id="qr-reader" style="width: 100%; max-width: 500px; margin: 0 auto; border: 1px dashed var(--border); border-radius: 12px; overflow: hidden; display: none;"></div>
+          <div id="qr-reader-results"></div>
+          <div class="card-header" style="margin-top:30px;">
+            <h2><i class="fas fa-history"></i> Recent Disposals & Points Earned</h2>
+          </div>
+          <div class="bin-table-wrap">
+            <table class="bin-table">
+              <thead>
+                <tr>
+                  <th>Date & Time</th>
+                  <th>Bin Name</th>
+                  <th>Waste Volume</th>
+                  <th>Points Earned</th>
+                </tr>
+              </thead>
+              <tbody id="rewardHistoryBody">
+                <tr><td colspan="4" style="text-align:center; padding:40px; color:var(--text2)">No disposal history yet. Start cleaning!</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- LEADERBOARD -->
+    <section class="page" id="page-leaderboard">
+      <div class="page-header">
+        <h1>EcoTrack Leaderboard</h1>
+        <p>Top contributors keeping our campus clean!</p>
+      </div>
+      <div class="dash-grid">
+        <div class="dash-card" style="grid-column: 1 / span 2;">
+          <div class="card-header">
+            <h2><i class="fas fa-medal" style="color: gold;"></i> Global Rankings</h2>
+            <button class="refresh-btn" onclick="fetchLeaderboard()"><i class="fas fa-sync-alt" id="lbRefreshIcon"></i></button>
+          </div>
+          <div class="bin-table-wrap">
+            <table class="bin-table">
+              <thead>
+                <tr>
+                  <th style="width: 50px;">Rank</th>
+                  <th>Resident</th>
+                  <th style="text-align: right;">Total EcoPoints</th>
+                </tr>
+              </thead>
+              <tbody id="leaderboardBody">
+                <tr><td colspan="3" style="text-align:center; padding:40px; color:var(--text2)">Loading rankings...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- MODALS -->
+  <div class="modal-overlay" id="rewardModal">
+    <div class="modal" style="text-align: center;">
+      <div class="modal-header">
+        <h2 style="width:100%; justify-content:center;"><i class="fas fa-gift"></i> Reward Earned!</h2>
+      </div>
+      <div class="modal-body" style="padding: 30px;">
+        <i class="fas fa-check-circle" style="font-size: 50px; color: var(--accent); margin-bottom: 15px;"></i>
+        <h3 id="rewardPointsValue" style="font-size: 24px; font-weight: 800; color: #fff;">+0 Points</h3>
+        <p style="color: var(--text2); font-size: 13px; margin-top: 5px;">Waste detected! 1% Increase = 1 EcoPoint</p>
+      </div>
+      <div class="modal-footer" style="justify-content: center; padding-bottom: 30px;">
+        <button class="save-btn" onclick="document.getElementById('rewardModal').classList.remove('open')" style="padding: 12px 40px; font-size: 15px;">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-config.js"></script>
+  <script src="app.js"></script>
+  <script>
+    function toggleProfileDropdown() {
+      const menu = document.getElementById('profileDropdown');
+      menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+    }
+    document.addEventListener('click', (e) => {
+      const container = document.querySelector('.profile-dropdown-container');
+      if (container && !container.contains(e.target)) {
+        const menu = document.getElementById('profileDropdown');
+        if (menu) menu.style.display = 'none';
+      }
+    });
+  </script>
+</body>
+</html>

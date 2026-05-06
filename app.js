@@ -3,14 +3,19 @@
 // ==========================================
 
 const API_URL = 'https://eco-track-smartbin-system.onrender.com/api';
+const LOCAL_API_URL = 'http://localhost:3000/api';
 let binsData = [];
 let mainMap, miniMap;
+let mainTileLayer, miniTileLayer;
 let mainMarkers = {}, miniMarkers = {};
 let routeLayer = null;
+let _vehicleMarker = null;
 
 // REWARD SYSTEM STATE
-let userPoints = parseInt(localStorage.getItem('ecoTrack_points')) || 0;
-let rewardHistory = JSON.parse(localStorage.getItem('ecoTrack_history')) || [];
+const currentUser = localStorage.getItem('ecoTrack_user') || 'guest';
+let userPoints = parseInt(localStorage.getItem(`ecoTrack_points_${currentUser}`)) || 0;
+let rewardHistory = JSON.parse(localStorage.getItem(`ecoTrack_history_${currentUser}`)) || [];
+console.log(`[USER SESSION] Active User: ${currentUser}`); // Debug log
 let lastKnownFills = {}; // deviceId -> fill
 
 // LPU Campus centre
@@ -40,26 +45,24 @@ const LPU_LANDMARKS = [
 // INIT
 // ==========================================
 document.addEventListener('DOMContentLoaded', () => {
+  // Apply theme FIRST so maps get correct tiles
+  if (localStorage.getItem('theme') === 'light') {
+    document.body.classList.add('light-mode');
+    const icon = document.querySelector('#themeToggleBtn i');
+    if (icon) icon.className = 'fas fa-sun';
+  }
+
   checkAuth();
   updateClock();
   setInterval(updateClock, 1000);
   initMaps();
-  initCharts();
+  setTimeout(() => {
+    console.log("[CHART DEBUG] Initializing charts...");
+    initCharts();
+  }, 300); // Small delay to ensure library is ready
   fetchBinsData();
   updateRewardsUI();
-  setInterval(fetchBinsData, 5000); // Fetch live hardware data every 5s
-
-  // Simulation for the other 5 bins (change every 30s)
-  setInterval(() => {
-    binsData.forEach((bin, index) => {
-      if (index > 0) { // Don't simulate Bin 1 (the live ESP32 bin)
-        bin.fill = Math.floor(Math.random() * 100);
-        bin.status = bin.fill >= 80 ? "Critical" : bin.fill >= 60 ? "Warning" : "Normal";
-        bin.lastUpdated = new Date().toISOString();
-      }
-    });
-    updateUI();
-  }, 30000);
+  setInterval(fetchBinsData, 5000);
 });
 
 // ==========================================
@@ -85,19 +88,34 @@ function updateClock() {
 }
 
 // ── AUTH & RBAC ──────────────────────────
+let currentRole = null;
+
 function checkAuth() {
-  const role = localStorage.getItem('ecoTrack_role');
-  if (!role) {
-    window.location.href = 'login.html';
-    return;
+  const role = localStorage.getItem('ecoTrack_role') || 'citizen';
+  const user = localStorage.getItem('ecoTrack_user') || 'Resident';
+  currentRole = role;
+  
+  // Display name: extract part before @ or use full string
+  const displayName = user.includes('@') ? user.split('@')[0] : user;
+  const welcomeEl = document.getElementById('userWelcome');
+  if (welcomeEl) {
+    welcomeEl.innerText = `Hi, ${displayName.charAt(0).toUpperCase() + displayName.slice(1)}`;
   }
+  
   applyRBAC(role);
 }
 
 function applyRBAC(role) {
-  if (role === 'user') {
-    // Resident role: only Dashboard and Rewards
+  if (role === 'citizen' || role === 'user') {
+    // Resident role: only Dashboard, Rewards, Leaderboard
     const toHide = ['nav-bins', 'nav-map', 'nav-analytics', 'nav-esp32'];
+    toHide.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = 'none';
+    });
+  } else if (role === 'collector' || role === 'admin') {
+    // Collector role: Dashboard, Bin Monitor, Route Map
+    const toHide = ['nav-rewards', 'nav-leaderboard'];
     toHide.forEach(id => {
       const el = document.getElementById(id);
       if (el) el.style.display = 'none';
@@ -107,6 +125,7 @@ function applyRBAC(role) {
 
 function logout() {
   localStorage.removeItem('ecoTrack_role');
+  localStorage.removeItem('ecoTrack_user'); // Fix: clear user on logout
   window.location.href = 'login.html';
 }
 
@@ -126,63 +145,53 @@ let _demoMode = false;
 // ==========================================
 async function fetchBinsData() {
   try {
-    const res = await fetch(`${API_URL}/bins`, { signal: AbortSignal.timeout(3000) });
-    if (!res.ok) throw new Error('bad response');
+    const res = await fetch(`${API_URL}/bins`, { 
+      signal: AbortSignal.timeout(3000),
+      headers: { 'Accept': 'application/json' }
+    });
+    if (!res.ok) throw new Error(`Server returned ${res.status}`);
     const data = await res.json();
     
-    // Merge live data with existing data to preserve local simulation states of other bins
-    // Merge live data with existing data to preserve local simulation states of other bins
     data.forEach(remoteBin => {
       const index = binsData.findIndex(b => b.deviceId === remoteBin.deviceId);
       if (index !== -1) {
-        // Detect increase BEFORE updating for rewards
         const prevFill = lastKnownFills[remoteBin.deviceId];
-        if (prevFill !== undefined && remoteBin.fill > prevFill) {
-          handleWasteDisposed(binsData[index], remoteBin.fill - prevFill);
+        const newFill = remoteBin.fill;
+
+        // Detection logic for rewards (only if there was an increase)
+        if (prevFill !== undefined && newFill > prevFill) {
+          checkFillSpikeIntent(binsData[index], newFill - prevFill, newFill);
         }
         
-        binsData[index].fill = remoteBin.fill;
+        // Update local state
+        binsData[index].fill = newFill;
         binsData[index].status = remoteBin.status;
         binsData[index].lastUpdated = remoteBin.lastUpdated;
+        lastKnownFills[remoteBin.deviceId] = newFill;
       } else {
         binsData.push(remoteBin);
+        lastKnownFills[remoteBin.deviceId] = remoteBin.fill;
       }
-      lastKnownFills[remoteBin.deviceId] = remoteBin.fill;
     });
 
-    _demoMode = false;
-    document.getElementById('connDot').style.background = 'var(--green)';
+    document.getElementById('connDot').style.background = '#00ff88';
     document.getElementById('connStatus').innerText = '⚡ ESP32-LIVE Connected';
-    updateUI();
+    _demoMode = false;
   } catch (err) {
-    console.warn('[FETCH ERROR]', err);
-    // Server offline → use demo data only if we don't have data yet
+    console.warn('[FETCH ERROR]', err.message);
     if (binsData.length === 0) {
-      binsData = JSON.parse(JSON.stringify(DEMO_BINS)); // initial load
-      _demoMode = true;
+      binsData = JSON.parse(JSON.stringify(DEMO_BINS));
     }
-    
-    // Simulate small fill changes ONLY for non-live bins, preserve Bin 1's last value
-    binsData.forEach(b => {
-      if (!b.isLive) {
-        const prevFill = b.fill;
-        b.fill = Math.min(100, Math.max(0, b.fill + Math.floor(Math.random() * 3 - 1)));
-        b.status = b.fill >= 80 ? 'Critical' : b.fill >= 60 ? 'Warning' : b.fill > 0 ? 'Normal' : 'Empty';
-        
-        // Detect increase in simulation too
-        if (b.fill > prevFill) {
-          handleWasteDisposed(b, b.fill - prevFill);
-        }
-      }
-    });
-    
-    document.getElementById('connDot').style.background = 'var(--yellow)';
-    document.getElementById('connStatus').innerText = '⚠ ESP32 Offline / CORS Issue';
+    _demoMode = true;
+    document.getElementById('connDot').style.background = '#eab308';
+    document.getElementById('connStatus').innerText = '⚠ Server Offline (Demo Mode)';
   }
+
   updateUI();
 }
 
 function updateUI() {
+  if (typeof updateCharts === "function") updateCharts();
   updateDashboardKPIs();
   renderBinCards();
   updateMaps();
@@ -246,7 +255,7 @@ function renderBinCards() {
 
     // Bin Monitor detail card
     detailGrid.innerHTML += `
-      <div class="bin-detail-card" style="border-color:${bin.isLive ? '#00ff88' : 'var(--border)'}">
+      <div class="bin-detail-card" style="border-color:${bin.isLive ? '#ffffff' : 'var(--border)'}">
         <div class="bin-detail-header">
           <span class="bin-detail-name">${bin.name}${liveTag}</span>
           <span class="bin-status-pill status-${bin.status.toLowerCase()}">${bin.status}</span>
@@ -291,7 +300,9 @@ async function deleteBin(id) {
 // MAPS – LPU CAMPUS
 // ==========================================
 function makeTileLayer() {
-  return L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  const isLight = document.body.classList.contains('light-mode');
+  const style = isLight ? 'light_all' : 'dark_all';
+  return L.tileLayer(`https://{s}.basemaps.cartocdn.com/${style}/{z}/{x}/{y}{r}.png`, {
     attribution: '© OpenStreetMap & Carto | LPU EcoTrack',
     maxZoom: 20
   });
@@ -300,733 +311,339 @@ function makeTileLayer() {
 function initMaps() {
   miniMap = L.map('miniMap', { zoomControl: false, dragging: false, scrollWheelZoom: false })
     .setView(LPU_CENTER, LPU_ZOOM - 1);
-  makeTileLayer().addTo(miniMap);
+  miniTileLayer = makeTileLayer().addTo(miniMap);
 
   mainMap = L.map('mainMap').setView(LPU_CENTER, LPU_ZOOM);
-  makeTileLayer().addTo(mainMap);
-
-  // Add campus boundary rectangle
-  const campusBounds = [[31.2495, 75.6985], [31.2570, 75.7090]];
-  L.rectangle(campusBounds, {
-    color: '#00ff88', weight: 2, fill: false, dashArray: '6 4', opacity: 0.5
-  }).addTo(mainMap).bindPopup('<b>LPU Campus Boundary</b>');
-
-  // Add landmark labels on main map
+  mainTileLayer = makeTileLayer().addTo(mainMap);
+  
+  // Add campus landmark labels
   LPU_LANDMARKS.forEach(lm => {
-    const lmIcon = L.divIcon({
-      html: `<div style="background:rgba(0,0,0,0.75);border:1px solid #00ff8860;color:#fff;font-size:11px;padding:3px 7px;border-radius:6px;white-space:nowrap;">${lm.icon} ${lm.name}</div>`,
-      className: '', iconAnchor: [40, 14]
-    });
-    L.marker([lm.lat, lm.lng], { icon: lmIcon }).addTo(mainMap)
-      .bindPopup(`<b>${lm.icon} ${lm.name}</b><br>LPU Campus`);
+    L.marker([lm.lat, lm.lng], {
+      icon: L.divIcon({
+        html: '<div style="font-size:11px;color:var(--text2);white-space:nowrap;text-shadow:0 0 4px rgba(0,0,0,0.8);">' + lm.icon + ' ' + lm.name + '</div>',
+        className: '',
+        iconSize: [100, 20],
+        iconAnchor: [50, 10]
+      })
+    }).addTo(mainMap);
   });
-
-  // Depot marker
-  const depotIcon = L.divIcon({
-    html: `<div style="background:#7c3aed;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;border:3px solid #fff;box-shadow:0 0 10px #7c3aed;">🏭</div>`,
-    className: '', iconSize: [34, 34], iconAnchor: [17, 17]
-  });
-  L.marker(LPU_CENTER, { icon: depotIcon }).addTo(mainMap)
-    .bindPopup('<b>🏭 LPU Waste Depot</b><br>Route start / end point');
 }
-
-function binMarkerHtml(bin) {
-  const sc = bin.fill >= 80 ? '#ef4444' : bin.fill >= 60 ? '#f59e0b' : '#10b981';
-  const ring = bin.isLive ? `box-shadow:0 0 0 3px #00ff88,0 0 14px #00ff88;` : '';
-  return `<div style="background:${sc};width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;border:3px solid #fff;${ring}cursor:pointer;">🗑️</div>`;
-}
-
-function popupHtml(bin) {
-  const sc  = bin.fill >= 80 ? '#ef4444' : bin.fill >= 60 ? '#f59e0b' : '#10b981';
-  const live = bin.isLive ? `<span style="background:#00ff88;color:#000;padding:1px 8px;border-radius:8px;font-weight:700;font-size:11px;">⚡ LIVE ESP32</span>` : '';
-  return `<div style="min-width:180px">
-    <b style="font-size:14px">${bin.name}</b> ${live}<br>
-    <small style="color:#94a3b8">${bin.location}</small><br>
-    <div style="margin:8px 0;background:#222;border-radius:6px;overflow:hidden;height:10px">
-      <div style="width:${bin.fill}%;background:${sc};height:100%"></div>
-    </div>
-    <b style="color:${sc};font-size:20px">${bin.fill}%</b>
-    <span style="color:#94a3b8;margin-left:6px">${bin.status}</span>
-  </div>`;
-}
-
-// 15 m in degrees (approx)
-const MAX_DRAG_M = 15;
-const DEG_PER_M  = 1 / 111320;
-
-function metersBetween(a, b) { return haversine(a, b) * 1000; }
 
 function updateMaps() {
+  // Clear existing markers
+  Object.values(mainMarkers).forEach(m => mainMap.removeLayer(m));
+  Object.values(miniMarkers).forEach(m => miniMap.removeLayer(m));
+  mainMarkers = {};
+  miniMarkers = {};
+
   binsData.forEach(bin => {
-    const icon = L.divIcon({ html: binMarkerHtml(bin), className: '', iconSize: [38, 38], iconAnchor: [19, 19] });
+    if (!bin.lat || !bin.lng) return;
+    const sc = statusColor(bin.fill);
+    const binNum = bin.id.split('_')[1] || '';
+    const html = `<div class="map-marker-fill" style="border-color:${sc};">
+                    <div class="fill-level" style="height:${bin.fill}%; background:${sc};"></div>
+                    <div class="marker-number">${binNum}</div>
+                  </div>`;
+    const icon = L.divIcon({ html, className: '', iconSize: [36, 48], iconAnchor: [18, 48] });
+    
+    const popupContent = `
+      <div style="font-family:'Inter',sans-serif; min-width:200px;">
+        <h3 style="margin:0 0 5px 0; font-size:16px;">${bin.name}</h3>
+        <p style="margin:0 0 10px 0; font-size:12px; color:var(--text2);">${bin.location}</p>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-weight:700; font-size:24px; color:${sc}">${bin.fill}%</span>
+          <span style="padding:4px 8px; border-radius:4px; font-size:10px; font-weight:700; background:var(--surface2); color:${sc}">${bin.status}</span>
+        </div>
+      </div>`;
 
-    if (mainMarkers[bin.id]) {
-      mainMarkers[bin.id].setIcon(icon).setPopupContent(popupHtml(bin));
-    } else {
-      const origin = { lat: bin.lat, lng: bin.lng };
-      const m = L.marker([bin.lat, bin.lng], { icon, draggable: true })
-        .addTo(mainMap).bindPopup(popupHtml(bin));
-
-      // Draw 15 m dashed radius circle
-      const circle = L.circle([origin.lat, origin.lng], {
-        radius: MAX_DRAG_M, color: '#00d4ff', weight: 1,
-        fill: true, fillOpacity: 0.06, dashArray: '4 4'
-      }).addTo(mainMap);
-
-      m.on('dragend', () => {
-        const pos  = m.getLatLng();
-        const dist = metersBetween(origin, { lat: pos.lat, lng: pos.lng });
-        if (dist > MAX_DRAG_M) {
-          // Snap back to edge of 15 m circle
-          const bearing = Math.atan2(pos.lng - origin.lng, pos.lat - origin.lat);
-          const newLat  = origin.lat + Math.cos(bearing) * MAX_DRAG_M * DEG_PER_M;
-          const newLng  = origin.lng + Math.sin(bearing) * MAX_DRAG_M * DEG_PER_M;
-          m.setLatLng([newLat, newLng]);
-          showToast('Bin snapped — max 15 m radius reached', 'warning');
-        }
-        const lp = m.getLatLng();
-        bin.lat = lp.lat; bin.lng = lp.lng;
-        showToast(`${bin.name} moved to new position`, 'info');
-      });
-
-      mainMarkers[bin.id] = m;
-    }
-
-    if (miniMarkers[bin.id]) {
-      miniMarkers[bin.id].setIcon(icon);
-    } else {
-      const mi = L.divIcon({ html: binMarkerHtml(bin), className: '', iconSize: [28, 28], iconAnchor: [14, 14] });
-      miniMarkers[bin.id] = L.marker([bin.lat, bin.lng], { icon: mi })
-        .addTo(miniMap).bindPopup(`<b>${bin.name}</b><br>${bin.fill}%`);
-    }
+    mainMarkers[bin.id] = L.marker([bin.lat, bin.lng], { icon }).addTo(mainMap).bindPopup(popupContent);
+    miniMarkers[bin.id] = L.marker([bin.lat, bin.lng], { icon }).addTo(miniMap);
   });
 }
 
-// ==========================================
-// DIJKSTRA ROUTE OPTIMIZATION
-// ==========================================
-function haversine(a, b) {
-  const R = 6371, toR = x => x * Math.PI / 180;
-  const dLat = toR(b.lat - a.lat), dLon = toR(b.lng - a.lng);
-  const x = Math.sin(dLat/2)**2 +
-            Math.cos(toR(a.lat)) * Math.cos(toR(b.lat)) * Math.sin(dLon/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1-x));
-}
-
-function dijkstraNearest(nodes, depot) {
-  // Build full distance matrix (Dijkstra shortest edges)
-  const all = [depot, ...nodes];
-  const dist = Array.from({ length: all.length }, (_, i) =>
-    all.map((_, j) => haversine(all[i], all[j]))
-  );
-  // Nearest-neighbor TSP on the precomputed Dijkstra distance matrix
-  let visited = new Array(all.length).fill(false);
-  let path = [0]; visited[0] = true;
-  let totalDist = 0;
-  for (let step = 0; step < nodes.length; step++) {
-    const curr = path[path.length - 1];
-    let nearest = -1, minD = Infinity;
-    for (let j = 1; j < all.length; j++) {
-      if (!visited[j] && dist[curr][j] < minD) { minD = dist[curr][j]; nearest = j; }
-    }
-    totalDist += minD;
-    visited[nearest] = true;
-    path.push(nearest);
-  }
-  totalDist += dist[path[path.length - 1]][0]; // return to depot
-  return { path: path.map(i => all[i]), totalDist };
-}
-
-// ── Vehicle animation state ────────────────────────
-function optimizeRoute() {
-  // Only collect CRITICAL bins (>= 80%) for the route
-  const pickups = binsData.filter(b => b.fill >= 80)
-    .sort((a, b) => b.fill - a.fill); // highest fill first
-
+async function optimizeRoute() {
+  const thresholdEl = document.getElementById('routeThreshold');
+  const thresholdVal = thresholdEl ? parseInt(thresholdEl.value) : 80;
+  
+  // Only collect bins that meet threshold
+  const pickups = binsData.filter(b => b.fill >= thresholdVal);
   if (!pickups.length) {
-    showToast('No critical bins (≥80%) need collection right now!', 'info');
+    showToast(`No bins (≥${thresholdVal}%) need collection right now!`, 'info');
     return;
   }
 
-  const depot = { name: 'LPU Waste Depot', lat: LPU_CENTER[0], lng: LPU_CENTER[1] };
-  const { path, totalDist } = dijkstraNearest(pickups, depot);
-  const routeNodes = path.slice(1);
+  showToast('Optimizing route via OpenRouteService...', 'info');
 
-  if (routeLayer) mainMap.removeLayer(routeLayer);
-  const latlngs = path.map(n => [n.lat, n.lng]);
-  latlngs.push([depot.lat, depot.lng]);
+  const btn = document.querySelector('.map-ctrl-btn.green');
+  if (btn) btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Optimizing...</span>';
 
-  // Draw glowing route line
-  routeLayer = L.polyline(latlngs, {
-    color: '#00ff88', weight: 5, dashArray: '14 7', opacity: 0.95
-  }).addTo(mainMap);
-  mainMap.fitBounds(routeLayer.getBounds(), { padding: [50, 50] });
-
-  // Place static truck between the first two critical bins (or depot and first bin)
-  if (_vehicleMarker) mainMap.removeLayer(_vehicleMarker);
-  const truckIcon = L.divIcon({ html: '<div style="font-size:26px;filter:drop-shadow(0 0 8px #00ff88);">🚛</div>', className: '', iconSize: [32, 32], iconAnchor: [16, 16] });
-  let truckLat = latlngs[0][0], truckLng = latlngs[0][1];
-  if (latlngs.length > 2) {
-    // halfway between first bin and second bin
-    truckLat = (latlngs[1][0] + latlngs[2][0]) / 2;
-    truckLng = (latlngs[1][1] + latlngs[2][1]) / 2;
-  } else if (latlngs.length > 1) {
-    truckLat = (latlngs[0][0] + latlngs[1][0]) / 2;
-    truckLng = (latlngs[0][1] + latlngs[1][1]) / 2;
-  }
-  _vehicleMarker = L.marker([truckLat, truckLng], { icon: truckIcon }).addTo(mainMap)
-    .bindPopup('<b>🚛 Waste Collection Truck</b><br>Currently en route between critical bins.');
-
-  // Update stats panel
-  document.getElementById('routeStats').style.display = 'grid';
-  document.getElementById('routeBinCount').innerText  = routeNodes.length;
-  document.getElementById('routeDist').innerText      = totalDist.toFixed(3) + ' km';
-  document.getElementById('routeTime').innerText      = Math.round(totalDist * 60 / 3) + ' min';
-
-  let html = `<div class="route-item" style="border:1px solid var(--accent)">
-    <div class="route-num" style="background:var(--accent);color:#000">🏭</div>
-    <div class="route-info"><strong>LPU Waste Depot</strong><span>Departure point</span></div>
-  </div>`;
-  routeNodes.forEach((bin, i) => {
-    const sc = bin.fill >= 95 ? 'var(--red)' : 'var(--yellow)';
-    const urg = bin.fill >= 95 ? '🔴 URGENT' : '🟡 Critical';
-    html += `<div class="route-item">
-      <div class="route-num" style="background:${bin.fill>=95?'#ef4444':'#f59e0b'}">${i+1}</div>
-      <div class="route-info">
-        <strong>${bin.name}</strong>
-        <span>${bin.location || ''}</span>
-        <span style="font-size:10px;margin-top:2px">${urg}</span>
-      </div>
-      <div class="route-fill" style="color:${sc};font-size:16px;font-weight:900">${bin.fill}%</div>
-    </div>`;
-  });
-  html += `<div class="route-item" style="border:1px solid #7c3aed">
-    <div class="route-num" style="background:#7c3aed">🏁</div>
-    <div class="route-info"><strong>Return to Depot</strong><span>Route complete</span></div>
-  </div>`;
-  document.getElementById('routeList').innerHTML = html;
-  showToast(`Route optimized — ${routeNodes.length} bins, ${totalDist.toFixed(2)} km`, 'success');
-}
-
-function clearRoute() {
-  if (routeLayer) { mainMap.removeLayer(routeLayer); routeLayer = null; }
-  if (_vehicleMarker) { mainMap.removeLayer(_vehicleMarker); _vehicleMarker = null; }
-  document.getElementById('routeStats').style.display = 'none';
-  document.getElementById('routeList').innerHTML = '<p class="route-empty">Click "Optimize Route" to generate the optimal collection sequence.</p>';
-  showToast('Route cleared', 'info');
-}
-
-function mapFilter(type, el) {
-  document.querySelectorAll('.map-ctrl-btn').forEach(b => b.classList.remove('active'));
-  el.classList.add('active');
-  Object.keys(mainMarkers).forEach(id => {
-    const bin = binsData.find(b => b.id === id);
-    if (!bin) return;
-    const show = type === 'all' || (type === 'pickup' && bin.fill >= 60);
-    show ? mainMap.addLayer(mainMarkers[id]) : mainMap.removeLayer(mainMarkers[id]);
-  });
-}
-
-// ==========================================
-// CHARTS
-// ==========================================
-let donutChart, barChart, lineChart;
-const _history = {}; // bin id → array of {t, fill}
-
-function initCharts() {
-  Chart.defaults.color = '#94a3b8';
-  Chart.defaults.font.family = "'Inter', sans-serif";
-
-  donutChart = new Chart(document.getElementById('donutChart').getContext('2d'), {
-    type: 'doughnut',
-    data: { labels: ['Critical', 'Warning', 'Normal', 'Empty'],
-            datasets: [{ data: [0,0,0,0], backgroundColor: ['#ef4444','#f59e0b','#10b981','#334155'], borderWidth: 0, cutout: '75%' }] },
-    options: { plugins: { legend: { display: false } } }
-  });
-
-  barChart = new Chart(document.getElementById('barChart').getContext('2d'), {
-    type: 'bar',
-    data: { labels: [], datasets: [{ label: 'Fill Level %', data: [], backgroundColor: [], borderRadius: 6 }] },
-    options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, max: 100 } } }
-  });
-
-  const lctx = document.getElementById('lineChart');
-  if (lctx) {
-    lineChart = new Chart(lctx.getContext('2d'), {
-      type: 'line',
-      data: { labels: [], datasets: [] },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        scales: { y: { beginAtZero: true, max: 100 }, x: { ticks: { maxTicksLimit: 8 } } },
-        plugins: { legend: { position: 'bottom' } },
-        elements: { point: { radius: 2 } }
-      }
-    });
-  }
-}
-
-function updateCharts() {
-  const now = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-
-  // Record history
-  binsData.forEach(b => {
-    if (!_history[b.id]) _history[b.id] = [];
-    _history[b.id].push({ t: now, fill: b.fill });
-    if (_history[b.id].length > 20) _history[b.id].shift();
-  });
-
-  if (donutChart) {
-    donutChart.data.datasets[0].data = [
-      binsData.filter(b => b.fill >= 80).length,
-      binsData.filter(b => b.fill >= 60 && b.fill < 80).length,
-      binsData.filter(b => b.fill > 0 && b.fill < 60).length,
-      binsData.filter(b => b.fill === 0).length
-    ];
-    donutChart.update();
-  }
-
-  if (barChart) {
-    barChart.data.labels = binsData.map(b => b.name.split(',')[0]);
-    barChart.data.datasets[0].data = binsData.map(b => b.fill);
-    barChart.data.datasets[0].backgroundColor = binsData.map(b =>
-      b.fill >= 80 ? '#ef4444' : b.fill >= 60 ? '#f59e0b' : '#10b981'
-    );
-    barChart.update();
-  }
-
-  updateLineChart();
-  updateStatsList();
-}
-
-function updateLineChart() {
-  if (!lineChart || !binsData.length) return;
-  const colors = ['#00ff88','#00d4ff','#f59e0b','#ef4444','#a78bfa','#fb7185'];
-  const labels = _history[binsData[0].id] ? _history[binsData[0].id].map(p => p.t) : [];
-  lineChart.data.labels = labels;
-  lineChart.data.datasets = binsData.map((b, i) => ({
-    label: b.name.split(',')[0],
-    data: (_history[b.id] || []).map(p => p.fill),
-    borderColor: colors[i % colors.length],
-    backgroundColor: colors[i % colors.length] + '22',
-    fill: false, tension: 0.3, borderWidth: 2
-  }));
-  lineChart.update();
-}
-
-function updateStatsList() {
-  const el = document.getElementById('statsList');
-  if (!el || !binsData.length) return;
-  const avg   = binsData.reduce((a, b) => a + b.fill, 0) / binsData.length;
-  const max   = binsData.reduce((a, b) => b.fill > a.fill ? b : a);
-  const min   = binsData.reduce((a, b) => b.fill < a.fill ? b : a);
-  el.innerHTML = `
-    <div class="stat-item"><label>Average Fill</label><span>${avg.toFixed(1)}%</span></div>
-    <div class="stat-item"><label>Fullest Bin</label><span>${max.name.split(',')[0]} (${max.fill}%)</span></div>
-    <div class="stat-item"><label>Emptiest Bin</label><span>${min.name.split(',')[0]} (${min.fill}%)</span></div>
-    <div class="stat-item"><label>Total Bins</label><span>${binsData.length}</span></div>
-    <div class="stat-item"><label>Critical</label><span style="color:var(--red)">${binsData.filter(b=>b.fill>=80).length}</span></div>
-    <div class="stat-item"><label>Need Pickup</label><span style="color:var(--yellow)">${binsData.filter(b=>b.fill>=60).length}</span></div>
-    <div class="stat-item"><label>Data Mode</label><span>${_demoMode ? '⚠ Demo' : '⚡ Live'}</span></div>
-    <div class="stat-item"><label>Campus</label><span>LPU, Phagwara</span></div>`;
-}
-
-function refreshData() {
-  const icon = document.getElementById('refreshIcon');
-  if (icon) icon.classList.add('spinning');
-  fetchBinsData().then(() => {
-    if (icon) icon.classList.remove('spinning');
-  }).catch(() => {
-    if (icon) icon.classList.remove('spinning');
-  });
-}
-
-// ==========================================
-// MODALS & FORMS
-// ==========================================
-function showAddBinModal() { document.getElementById('addBinModal').classList.add('open'); }
-function closeModal()       { document.getElementById('addBinModal').classList.remove('open'); }
-
-async function addNewBin() {
-  const name     = document.getElementById('newBinName').value.trim();
-  const location = document.getElementById('newBinLocation').value.trim();
-  const lat      = parseFloat(document.getElementById('newBinLat').value);
-  const lng      = parseFloat(document.getElementById('newBinLng').value);
-  const deviceId = document.getElementById('newBinDeviceId').value.trim();
-  if (!name || !lat || !lng || !deviceId) { showToast('Please fill all fields!', 'error'); return; }
   try {
-    await fetch(`${API_URL}/bins`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, location, lat, lng, deviceId })
+    console.log('[ROUTE] Sending optimization request to Local Server...');
+    const depot = window._customDepot || { lat: LPU_CENTER[0], lng: LPU_CENTER[1] };
+    const response = await fetch(`${LOCAL_API_URL}/route`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ threshold: thresholdVal, depot, bins: binsData })
     });
-    closeModal(); fetchBinsData();
-    showToast(`Bin "${name}" registered!`, 'success');
-  } catch { showToast('Could not add bin – server offline.', 'error'); }
-}
 
-// ESP32 Config helpers
-function testConnection() {
-  const ep = document.getElementById('apiEndpoint').value;
-  document.getElementById('connTestResult').innerHTML = `<span style="color:var(--yellow)">Testing ${ep}…</span>`;
-  fetch(ep.replace('/api/update', '/api/bins')).then(() => {
-    document.getElementById('connTestResult').innerHTML = `<span style="color:var(--green)">✓ Connection successful!</span>`;
-  }).catch(() => {
-    document.getElementById('connTestResult').innerHTML = `<span style="color:var(--red)">✗ Connection failed. Check URL & server.</span>`;
-  });
-}
-
-function saveConfig()       { showToast('Configuration saved!', 'success'); }
-function saveSensorConfig() { showToast('Sensor config applied!', 'success'); }
-
-function copyCode() {
-  const code = document.getElementById('esp32Code').innerText;
-  navigator.clipboard.writeText(code).then(() => showToast('ESP32 code copied!', 'success'));
-}
-
-function filterBins(type, el) {
-  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-  el.classList.add('active');
-  document.querySelectorAll('.bin-detail-card').forEach((card, i) => {
-    const bin = binsData[i];
-    if (!bin) return;
-    const show = type === 'all'
-      || (type === 'critical' && bin.fill >= 80)
-      || (type === 'warning'  && bin.fill >= 60 && bin.fill < 80)
-      || (type === 'normal'   && bin.fill > 0 && bin.fill < 60)
-      || (type === 'empty'    && bin.fill === 0);
-    card.style.display = show ? '' : 'none';
-  });
-}
-
-function searchBins(q) {
-  document.querySelectorAll('.bin-detail-card').forEach((card, i) => {
-    const bin = binsData[i];
-    card.style.display = bin && bin.name.toLowerCase().includes(q.toLowerCase()) ? '' : 'none';
-  });
-}
-
-function clearFeed() { document.getElementById('activityFeed').innerHTML = ''; }
-// ==========================================
-// ALERTS & NOTIFICATIONS
-// ==========================================
-function generateAlerts() {
-  const list = document.getElementById('alertsList');
-  if (!list) return;
-  let html = '';
-  binsData.forEach(bin => {
-    if (bin.fill >= 95) {
-      html += `<div class="activity-item error alert-card" data-type="critical">
-        <i class="fas fa-exclamation-triangle" style="color:var(--red); font-size:20px;"></i>
-        <div><strong>URGENT: ${bin.name}</strong><span>Bin is ${bin.fill}% full! Dispatch collection immediately.</span></div>
-      </div>`;
-    } else if (bin.fill >= 80) {
-      html += `<div class="activity-item warning alert-card" data-type="critical">
-        <i class="fas fa-exclamation-circle" style="color:var(--yellow); font-size:20px;"></i>
-        <div><strong>Critical: ${bin.name}</strong><span>Bin is ${bin.fill}% full. Route optimization needed.</span></div>
-      </div>`;
-    } else if (bin.fill >= 60) {
-      html += `<div class="activity-item warning alert-card" data-type="warning">
-        <i class="fas fa-exclamation-circle" style="color:var(--yellow); font-size:20px;"></i>
-        <div><strong>Warning: ${bin.name}</strong><span>Bin is ${bin.fill}% full. Monitor status.</span></div>
-      </div>`;
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error(`[ROUTE API ERROR] ${response.status}:`, errText);
+      throw new Error(`API Request Failed (${response.status}): ${errText}`);
     }
-  });
-  if (html === '') {
-    html = `<div style="padding:20px; color:var(--text2); text-align:center;">No active alerts at this time.</div>`;
-  }
-  list.innerHTML = html;
-}
+    
+    const result = await response.json();
+    
+    if (result.route.length <= 1) {
+       showToast(result.message || 'No optimal route found', 'info');
+       if (btn) btn.innerHTML = '<i class="fas fa-route"></i><span>Optimize Route</span>';
+       return;
+    }
 
-function filterAlerts(type, el) {
-  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-  el.classList.add('active');
-  document.querySelectorAll('.alert-card').forEach(card => {
-    if (type === 'all' || card.getAttribute('data-type') === type) {
-      card.style.display = 'flex';
+    if (routeLayer) mainMap.removeLayer(routeLayer);
+    
+    // Check if we received road geometry (ORS) or Euclidean fallback
+    let latlngs = [];
+    if (result.geometry && result.geometry.length > 0) {
+      latlngs = result.geometry;
     } else {
-      card.style.display = 'none';
+      latlngs = result.route.map(n => [n.lat, n.lng]);
     }
-  });
-}
 
-function clearAlerts() { 
-  document.getElementById('alertsList').innerHTML = '<div style="padding:20px; color:var(--text2); text-align:center;">All alerts cleared.</div>';
-  document.getElementById('alertBadge').innerText = '0';
-  document.getElementById('notifCount').innerText = '0';
-}
-
-function refreshData() {
-  document.getElementById('refreshIcon').classList.add('spinning');
-  fetchBinsData().finally(() => setTimeout(() => document.getElementById('refreshIcon').classList.remove('spinning'), 600));
-}
-
-function switchMode(val) { showToast(`Mode switched to: ${val}`, 'info'); }
-
-// Toast
-function showToast(msg, type = 'info') {
-  const icons = { success: 'fa-check-circle', error: 'fa-times-circle', warning: 'fa-exclamation-triangle', info: 'fa-info-circle' };
-  const t = document.createElement('div');
-  t.className = `toast ${type}`;
-  t.innerHTML = `<i class="fas ${icons[type] || icons.info}"></i><span>${msg}</span>`;
-  document.getElementById('toastContainer').appendChild(t);
-  setTimeout(() => { t.classList.add('fade-out'); setTimeout(() => t.remove(), 300); }, 3500);
-}
-
-// ESP32 code snippet (displayed in config page)
-window.addEventListener('DOMContentLoaded', () => {
-  const codeEl = document.getElementById('esp32Code');
-  if (codeEl) codeEl.textContent = `// ── ESP32 UniMall Bin Firmware ──
-#include <WiFi.h>
-#include <HTTPClient.h>
-#include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
-
-const char* ssid     = "VN_PG_GROUND_FLOOR-2.4G";
-const char* password = "Liwa@123";
-const char* serverIP = "https://eco-track-smartbin-system.onrender.com/api/update";
-const char* deviceId = "ESP32-LIVE";
-
-const int TRIG = 5, ECHO = 18;
-const float BIN_H = 25.0;
-
-#define SCREEN_WIDTH 128
-#define SCREEN_HEIGHT 64
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
-
-void setup() {
-  Serial.begin(115200);
-
-  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
-    Serial.println("OLED not found");
-    while (true);
-  }
-
-  display.clearDisplay();
-  display.setTextColor(SSD1306_WHITE);
-
-  pinMode(TRIG, OUTPUT);
-  pinMode(ECHO, INPUT);
-
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) delay(500);
-}
-
-void loop() {
-  // Ultrasonic trigger
-  digitalWrite(TRIG, LOW); delayMicroseconds(2);
-  digitalWrite(TRIG, HIGH); delayMicroseconds(10);
-  digitalWrite(TRIG, LOW);
-
-  float dist = pulseIn(ECHO, HIGH) * 0.01715;
-  int fill = constrain((int)((BIN_H - dist) / BIN_H * 100), 0, 100);
-
-  // ---------------- OLED DISPLAY ----------------
-  display.clearDisplay();
-
-  // Title (top)
-  display.setTextSize(1);
-  display.setCursor(25, 0);
-  display.println("Trash level");
-
-  // Percentage (CENTER)
-  display.setTextSize(3);
-  display.setCursor(40, 20);
-  display.print(fill);
-  display.print("%");
-
-  // Alert (bottom)
-  if (fill >= 85) {
-    display.setTextSize(1);
-    display.setCursor(5, 56);
-    display.setTextColor(SSD1306_BLACK, SSD1306_WHITE);
-    display.println(" Alert:bin is full");
-    display.setTextColor(SSD1306_WHITE);
-  }
-
-  display.display();
-  // ------------------------------------------------
-
-  // Send to server
-  if (WiFi.status() == WL_CONNECTED) {
-    HTTPClient http;
-    http.begin(serverIP); // Render uses HTTPS
-    http.addHeader("Content-Type", "application/json");
-
-    String payload = "{\\"deviceId\\":\\"" + String(deviceId) + "\\",\\"fill\\":" + fill + "}";
-    int httpResponseCode = http.POST(payload);
+    // Draw solid glowing road route
+    routeLayer = L.polyline(latlngs, {
+      color: '#ffffff', weight: 10, opacity: 0.1
+    }).addTo(mainMap);
     
-    if (httpResponseCode > 0) Serial.println("Success: " + String(httpResponseCode));
-    else Serial.println("Error: " + String(httpResponseCode));
-
-    http.end();
-  }
-  delay(5000);
-}`;
-});
-// ==========================================
-// REWARD SYSTEM LOGIC
-// ==========================================
-
-function handleWasteDisposed(bin, increase) {
-  // Points = % increase
-  const pointsEarned = increase;
-  if (pointsEarned <= 0) return;
-
-  console.log(`[REWARD] Waste detected in ${bin.name}: +${pointsEarned} points`);
-
-  // Show Reward Modal with QR
-  const pointsText = document.getElementById('rewardPointsValue');
-  const qrImg = document.getElementById('qrCodeImg');
-  
-  if (pointsText) pointsText.innerText = `+${pointsEarned} Points`;
-  
-  // Generate QR Code URL (points data encoded)
-  // We use qrserver.com to generate a QR that encodes the reward info
-  const qrData = encodeURIComponent(`EcoTrackReward:${pointsEarned}:${Date.now()}`);
-  if (qrImg) qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${qrData}&color=00ff88&bgcolor=ffffff`;
-
-  document.getElementById('rewardModal').classList.add('open');
-
-  // Add to temporary storage to be claimed
-  window._pendingReward = {
-    binName: bin.name,
-    points: pointsEarned,
-    volume: increase + '%',
-    time: new Date().toLocaleString('en-IN')
-  };
-}
-
-function closeRewardModal() {
-  if (window._pendingReward) {
-    const r = window._pendingReward;
-    userPoints += r.points;
+    // Add white core
+    const routeCore = L.polyline(latlngs, {
+      color: '#ffffff', weight: 2, opacity: 0.8
+    }).addTo(mainMap);
     
-    // Add to history
-    rewardHistory.unshift({
-      time: r.time,
-      binName: r.binName,
-      volume: r.volume,
-      points: r.points,
-      status: 'Claimed'
+    // Group them for removal
+    routeLayer = L.layerGroup([routeLayer, routeCore]).addTo(mainMap);
+
+    mainMap.fitBounds(L.polyline(latlngs).getBounds(), { padding: [50, 50] });
+
+    // Place Draggable truck at the start of the route
+    if (!_vehicleMarker) {
+      const truckIcon = L.divIcon({ html: '<div style="font-size:32px;filter:drop-shadow(0 0 8px #ffffff); cursor: grab;">🚛</div>', className: '', iconSize: [40, 40], iconAnchor: [20, 20] });
+      _vehicleMarker = L.marker([LPU_CENTER[0], LPU_CENTER[1]], { 
+        icon: truckIcon,
+        draggable: true,
+        zIndexOffset: 1000
+      }).addTo(mainMap).bindPopup('<b>🚛 Collection Truck</b><br>Drag me to set starting position!');
+      
+      _vehicleMarker.on('dragend', function(event) {
+        const marker = event.target;
+        const position = marker.getLatLng();
+        showToast('Truck position updated! Re-optimizing route...', 'info');
+        window._customDepot = { lat: position.lat, lng: position.lng };
+        optimizeRoute();
+      });
+    }
+
+    // Start Truck Animation along the route
+    if (!window._customDepot) {
+      _vehicleMarker.setLatLng(latlngs[0]);
+    }
+    
+    // Smooth animate truck
+    let currentStep = 0;
+    function animateTruck() {
+      if (currentStep >= latlngs.length) return;
+      _vehicleMarker.setLatLng(latlngs[currentStep]);
+      currentStep++;
+      setTimeout(animateTruck, 40); // 40ms per point is very smooth and a bit slower
+    }
+    animateTruck();
+
+    // Update stats panel
+    document.getElementById('routeStats').style.display = 'grid';
+    document.getElementById('routeBinCount').innerText  = result.binCount;
+    document.getElementById('routeDist').innerText      = result.totalDistance.toFixed(2) + ' km';
+    // Use ORS duration if available, otherwise calculate using 20km/h
+    const duration = result.durationMin || Math.round((result.totalDistance / 20) * 60);
+    document.getElementById('routeTime').innerText      = duration + ' min';
+
+    let html = `<div class="route-item" style="border:1px solid var(--accent)">
+      <div class="route-num" style="background:var(--accent);color:#000">🏭</div>
+      <div class="route-info"><strong>LPU Waste Depot</strong><span>Departure point</span></div>
+    </div>`;
+    
+    result.route.slice(1, -1).forEach((node, i) => {
+      const bin = binsData.find(b => b.id === node.id) || node;
+      const fill = bin.fill || 0;
+      const sc = fill >= 95 ? 'var(--red)' : 'var(--yellow)';
+      const urg = fill >= 95 ? '🔴 URGENT' : '🟡 Critical';
+      
+      html += `<div class="route-item">
+        <div class="route-num" style="background:${fill>=95?'#ef4444':'#eab308'}">${i+1}</div>
+        <div class="route-info">
+          <strong>${bin.name || bin.id}</strong>
+          <span>${bin.location || ''}</span>
+          <span style="font-size:10px;margin-top:2px">${urg}</span>
+        </div>
+        <div class="route-fill" style="color:${sc};font-size:16px;font-weight:900">${fill}%</div>
+      </div>`;
     });
+    
+    html += `<div class="route-item" style="border:1px solid #ffffff">
+      <div class="route-num" style="background:#ffffff">🏁</div>
+      <div class="route-info"><strong>Return to Depot</strong><span>Route complete</span></div>
+    </div>`;
+    
+    document.getElementById('routeList').innerHTML = html;
+    showToast(`Road Route optimized — ${result.binCount} bins, ${result.totalDistance.toFixed(2)} km`, 'success');
 
-    if (rewardHistory.length > 20) rewardHistory.pop();
-
-    // Save to localStorage
-    localStorage.setItem('ecoTrack_points', userPoints);
-    localStorage.setItem('ecoTrack_history', JSON.stringify(rewardHistory));
-
-    showToast(`Successfully claimed ${r.points} EcoPoints!`, 'success');
-    window._pendingReward = null;
+  } catch (err) {
+    console.error(err);
+    showToast('Failed to optimize route using API', 'error');
+  } finally {
+    if (btn) btn.innerHTML = '<i class="fas fa-route"></i><span>Optimize Route</span>';
   }
+}
 
-  document.getElementById('rewardModal').classList.remove('open');
+function awardPoints(bin, increase) {
+  userPoints += increase; // 1 point per 1% fill
+  const history = {
+    time: new Date().toLocaleString('en-IN'),
+    binName: bin.name,
+    volume: increase + '%',
+    points: increase,
+    status: 'Earned'
+  };
+  rewardHistory.unshift(history);
+  localStorage.setItem(`ecoTrack_points_${currentUser}`, userPoints);
+  localStorage.setItem(`ecoTrack_history_${currentUser}`, JSON.stringify(rewardHistory));
   updateRewardsUI();
+  showToast(`EcoPoints Earned! +${increase} for cleaning ${bin.name}`, 'success');
 }
 
 function updateRewardsUI() {
-  const ptsEl = document.getElementById('userPoints');
-  const walletEl = document.getElementById('walletBalance');
-  const progressEl = document.getElementById('withdrawProgress');
-  const progressText = document.getElementById('progressText');
-  const withdrawBtn = document.getElementById('withdrawBtn');
-  const historyBody = document.getElementById('rewardHistoryBody');
+  const pointsVal = document.getElementById('pointsVal');
+  const levelVal  = document.getElementById('levelVal');
+  const levelProgress = document.getElementById('levelProgress');
+  const totalEarned = document.getElementById('totalEarned');
+  
+  if (pointsVal) pointsVal.innerText = userPoints;
+  if (totalEarned) totalEarned.innerText = userPoints;
+  
+  // Calculate Level (1000 pts per level)
+  const level = Math.floor(userPoints / 1000) + 1;
+  const nextLevelPts = level * 1000;
+  const currentLevelPts = (level - 1) * 1000;
+  const progress = ((userPoints - currentLevelPts) / (nextLevelPts - currentLevelPts)) * 100;
+  
+  if (levelVal) levelVal.innerText = 'Level ' + level;
+  if (levelProgress) levelProgress.style.width = progress + '%';
 
-  if (!ptsEl) return;
-
-  // Update Points & Wallet (1000 pts = 50 INR)
-  ptsEl.innerText = userPoints.toLocaleString();
-  const balance = (userPoints / 1000) * 50;
-  walletEl.innerText = `₹${balance.toFixed(2)}`;
-
-  // Update Progress (Goal: 5000 pts)
-  const progress = Math.min(100, (userPoints / 5000) * 100);
-  progressEl.style.width = `${progress}%`;
-  progressText.innerText = `${userPoints} / 5000 pts`;
-
-  // Update Withdrawal Button
-  if (userPoints >= 5000) {
-    withdrawBtn.disabled = false;
-    withdrawBtn.style.opacity = '1';
-    withdrawBtn.style.cursor = 'pointer';
-  } else {
-    withdrawBtn.disabled = true;
-    withdrawBtn.style.opacity = '0.5';
-    withdrawBtn.style.cursor = 'not-allowed';
-  }
-
-  // Update History Table
-  if (rewardHistory.length > 0) {
-    historyBody.innerHTML = rewardHistory.map(h => `
-      <tr>
-        <td>${h.time}</td>
-        <td>${h.binName}</td>
-        <td>${h.volume}</td>
-        <td style="color:var(--accent); font-weight:700">+${h.points}</td>
-        <td><span class="bin-status-pill status-normal">${h.status}</span></td>
-      </tr>
-    `).join('');
-  }
-}
-
-function withdrawPoints() {
-  if (userPoints < 5000) {
-    showToast('Minimum 5000 points required to withdraw!', 'warning');
-    return;
-  }
-
-  const amount = (userPoints / 1000) * 50;
-  if (confirm(`Do you want to withdraw ₹${amount.toFixed(2)} to your UPI?`)) {
-    showToast(`Withdrawal of ₹${amount.toFixed(2)} initiated!`, 'success');
-    userPoints = 0;
-    rewardHistory.unshift({
-      time: new Date().toLocaleString('en-IN'),
-      binName: 'System Withdrawal',
-      volume: '-',
-      points: -5000,
-      status: 'Withdrawn'
-    });
-    localStorage.setItem('ecoTrack_points', userPoints);
-    localStorage.setItem('ecoTrack_history', JSON.stringify(rewardHistory));
-    updateRewardsUI();
+  // Render History
+  const list = document.getElementById('rewardHistoryList');
+  if (list) {
+    if (rewardHistory.length === 0) {
+      list.innerHTML = '<div style="padding:40px; text-align:center; color:var(--text2); opacity:0.5">No history yet.</div>';
+    } else {
+      list.innerHTML = rewardHistory.map(h => `
+        <div class="reward-history-item" style="display:flex; justify-content:space-between; align-items:center; padding:15px; border-bottom:1px solid var(--border)">
+          <div>
+            <div style="font-weight:500; font-size:14px;">${h.binName} Disposal</div>
+            <div style="font-size:11px; color:var(--text2); margin-top:4px;">${h.time} • ${h.volume} waste</div>
+          </div>
+          <div style="color:var(--green); font-weight:600; font-size:14px;">+${h.points} pts</div>
+        </div>
+      `).join('');
+    }
   }
 }
 
 // SIMULATION FOR TESTING
 function simulateWasteDisposal() {
-  const randomBin = binsData[Math.floor(Math.random() * binsData.length)] || DEMO_BINS[0];
-  const increase = Math.floor(Math.random() * 20) + 10; // 10-30% increase
-  
-  showToast(`Simulating waste disposal in ${randomBin.name}...`, 'info');
-  
-  // Trigger reward flow
+  if (currentRole !== 'citizen') return;
+  handleQRSuccess("ecotrack:bin:bin_1");
   setTimeout(() => {
-    handleWasteDisposed(randomBin, increase);
-  }, 1000);
+    const bin1 = binsData.find(b => b.id === 'bin_1');
+    if (bin1) {
+      const inc = Math.floor(Math.random() * 10) + 5;
+      bin1.fill = Math.min(100, bin1.fill + inc);
+      checkFillSpikeIntent(bin1, inc);
+    }
+  }, 3000);
+}
+
+// ==========================================
+// CHARTS
+// ==========================================
+let donutChart = null;
+
+function initCharts() {
+  const ctx = document.getElementById('donutChart');
+  if (!ctx) return;
+
+  donutChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: ['Critical', 'Warning', 'Normal', 'Empty'],
+      datasets: [{
+        data: [0, 0, 0, 0],
+        backgroundColor: ['#ef4444', '#f59e0b', '#10b981', 'rgba(255,255,255,0.05)'],
+        borderWidth: 0,
+        hoverOffset: 10
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '80%',
+      plugins: {
+        legend: { display: false }
+      }
+    }
+  });
+  updateCharts();
+}
+
+function updateCharts() {
+  if (!donutChart) return;
+  
+  const critical = binsData.filter(b => b.fill >= 80).length;
+  const warning  = binsData.filter(b => b.fill >= 60 && b.fill < 80).length;
+  const normal   = binsData.filter(b => b.fill > 0 && b.fill < 60).length;
+  const empty    = binsData.filter(b => b.fill === 0).length;
+
+  donutChart.data.datasets[0].data = [critical, warning, normal, empty];
+  donutChart.update();
+
+  // Update legend
+  const legend = document.getElementById('donutLegend');
+  if (legend) {
+    legend.innerHTML = `
+      <div class="legend-item"><span class="dot" style="background:#ef4444"></span> Critical: ${critical}</div>
+      <div class="legend-item"><span class="dot" style="background:#f59e0b"></span> Warning: ${warning}</div>
+      <div class="legend-item"><span class="dot" style="background:#10b981"></span> Normal: ${normal}</div>
+      <div class="legend-item"><span class="dot" style="background:rgba(255,255,255,0.2)"></span> Empty: ${empty}</div>
+    `;
+  }
 }
 
 // ── QR SCANNING (WEB) ─────────────────────
 let html5QrCode = null;
 
 function startQRScanner() {
+  if (currentRole !== 'citizen') return;
   const readerEl = document.getElementById('qr-reader');
   if (!readerEl) return;
-  
   readerEl.style.display = 'block';
   showToast("Initializing Camera...", "info");
-
   html5QrCode = new Html5Qrcode("qr-reader");
-  const config = { fps: 10, qrbox: { width: 250, height: 250 } };
-
-  html5QrCode.start(
-    { facingMode: "environment" }, 
-    config,
-    (decodedText) => {
-      handleQRSuccess(decodedText);
-    },
-    (err) => { /* ignore silent errors */ }
+  html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } },
+    (decodedText) => { handleQRSuccess(decodedText); },
+    (err) => {}
   ).catch(err => {
-    console.error("QR Scan Error:", err);
+    console.error("QR Error:", err);
     showToast("Camera Error or Permission Denied", "error");
   });
 }
@@ -1035,15 +652,448 @@ function handleQRSuccess(text) {
   if (html5QrCode) {
     html5QrCode.stop().then(() => {
       document.getElementById('qr-reader').style.display = 'none';
-      
-      // Parse: EcoTrackReward:points:timestamp
-      if (text.includes("EcoTrackReward:")) {
-        const pts = parseInt(text.split(":")[1]) || 25;
-        showToast(`QR Recognized! +${pts} Points`, "success");
-        handleWasteDisposed({ name: "Hardware Bin" }, pts);
+      let scannedBinId = "bin_1";
+      if (text.startsWith("ecotrack:bin:")) {
+        scannedBinId = text.split(":")[2].trim(); // Added .trim() to fix newline issue
       } else {
-        showToast("Unrecognized QR Format", "warning");
+        scannedBinId = text.trim(); 
+        showToast(`Non-standard QR. Using: ${scannedBinId}`, "info");
       }
+      
+      const bin = binsData.find(b => b.id === scannedBinId) || { name: scannedBinId, id: scannedBinId, fill: 0 };
+      
+      // Captured Intent with the fill level at the moment of scan
+      activeIntent = { 
+        binId: scannedBinId, 
+        startTime: Date.now(),
+        initialFill: bin.fill 
+      };
+      
+      showToast(`Linked to ${bin.name}. Please deposit your waste now.`, "info");
+      const resultsEl = document.getElementById('qr-reader-results');
+      if (resultsEl) {
+        resultsEl.innerHTML = `
+          <div id="active-reward-status" style="padding: 15px; background: rgba(34, 197, 94, 0.1); border: 1px solid var(--green); color: var(--green); border-radius: 8px; margin-top: 15px; font-weight: 500;">
+            <i class="fas fa-spinner fa-spin"></i> Connected to ${bin.name}. Waiting for waste (90s timeout)...
+          </div>`;
+      }
+      
+      setTimeout(() => {
+        if (activeIntent && activeIntent.binId === scannedBinId) {
+          activeIntent = null;
+          if (resultsEl) {
+            resultsEl.innerHTML = `
+              <div style="padding: 15px; background: rgba(239, 68, 68, 0.1); border: 1px solid var(--red); color: var(--red); border-radius: 8px; margin-top: 15px; font-weight: 500;">
+                Timeout: No waste detected. Please scan again.
+              </div>`;
+          }
+        }
+      }, 90000);
+
     });
   }
 }
+
+// ==========================================
+// CHARTS
+// ==========================================
+let distChart;
+
+function initCharts() {
+  try {
+  const ctx = document.getElementById('distributionChart');
+  if (!ctx) return;
+  
+  distChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: ['Critical (≥80%)', 'Warning (60-79%)', 'Normal (1-59%)', 'Empty (0%)'],
+      datasets: [{
+        data: [0, 0, 0, 0],
+        backgroundColor: [
+          '#ef4444', // Red
+          '#eab308', // Yellow
+          '#22c55e', // Green
+          '#64748b'  // Gray
+        ],
+        borderWidth: 0,
+        hoverOffset: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '75%',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: 'rgba(0,0,0,0.8)',
+          titleFont: { size: 14, family: "'Inter', sans-serif" },
+          bodyFont: { size: 14, family: "'Inter', sans-serif" },
+          padding: 12,
+          cornerRadius: 8,
+          displayColors: true
+        }
+      }
+    }
+  });
+  } catch(e) { console.error("Chart init failed", e); setTimeout(initCharts, 500); }
+}
+
+function updateCharts() {
+  if (!distChart) return;
+  
+  let critical = 0, warning = 0, normal = 0, empty = 0;
+  binsData.forEach(b => {
+    if (b.fill >= 80) critical++;
+    else if (b.fill >= 60) warning++;
+    else if (b.fill > 0) normal++;
+    else empty++;
+  });
+  
+  distChart.data.datasets[0].data = [critical, warning, normal, empty];
+  distChart.update();
+  
+  // Update Center Text
+  const centerText = document.getElementById('chartCenterText');
+  if (centerText) {
+    const totalFill = binsData.reduce((sum, b) => sum + b.fill, 0);
+    const avgFill = binsData.length ? Math.round(totalFill / binsData.length) : 0;
+    centerText.innerHTML = `<div style="text-align:center">
+      <div style="font-size:24px;font-weight:700;color:var(--text)">${avgFill}%</div>
+      <div style="font-size:12px;color:var(--text2)">Average</div>
+    </div>`;
+  }
+}
+
+
+// ==========================================
+// ALERTS & FILTERS
+// ==========================================
+
+function generateAlerts() {
+  const alertsContainer = document.getElementById('alertsList');
+  if (!alertsContainer) return;
+  
+  const criticalBins = binsData.filter(b => b.fill >= 80);
+  
+  const alertBadge = document.getElementById('alertBadge');
+  if (alertBadge) alertBadge.innerText = criticalBins.length;
+  
+  if (criticalBins.length === 0) {
+    alertsContainer.innerHTML = '<div class="alert-card"><i class="fas fa-check-circle" style="color:var(--green)"></i><div class="alert-info"><h4>All clear</h4><p>No critical bins</p></div></div>';
+    return;
+  }
+  
+  let html = '';
+  criticalBins.forEach(bin => {
+    html += `<div class="alert-card">
+      <i class="fas fa-exclamation-triangle" style="color:var(--red)"></i>
+      <div class="alert-info">
+        <h4>${bin.name} Critical</h4>
+        <p>${bin.fill}% full — Needs collection</p>
+      </div>
+    </div>`;
+  });
+  alertsContainer.innerHTML = html;
+}
+
+let _currentFilter = 'all';
+function filterBins(type, btn) {
+  _currentFilter = type;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  applyFilters();
+}
+
+let _searchTerm = '';
+function searchBins(term) {
+  _searchTerm = term.toLowerCase();
+  applyFilters();
+}
+
+function applyFilters() {
+  const cards = document.querySelectorAll('#binDetailGrid .bin-detail-card');
+  cards.forEach(card => {
+    const fillEl = card.querySelector('.bin-detail-fill');
+    if (!fillEl) return;
+    const fill = parseInt(fillEl.innerText);
+    const nameEl = card.querySelector('.bin-detail-name');
+    const name = nameEl ? nameEl.innerText.toLowerCase() : '';
+    
+    let typeMatch = false;
+    if (_currentFilter === 'all') typeMatch = true;
+    else if (_currentFilter === 'critical' && fill >= 80) typeMatch = true;
+    else if (_currentFilter === 'warning' && fill >= 60 && fill < 80) typeMatch = true;
+    else if (_currentFilter === 'normal' && fill > 0 && fill < 60) typeMatch = true;
+    else if (_currentFilter === 'empty' && fill === 0) typeMatch = true;
+    
+    const searchMatch = name.includes(_searchTerm);
+    
+    if (typeMatch && searchMatch) {
+      card.style.display = 'flex';
+    } else {
+      card.style.display = 'none';
+    }
+  });
+}
+
+// ==========================================
+// REWARDS (INTENT SYSTEM)
+// ==========================================
+
+let activeIntent = null;
+function checkFillSpikeIntent(bin, increase, currentFill) {
+  console.log(`[REWARD DEBUG] Checking spike for ${bin.id}. Increase: ${increase}, Current: ${currentFill}`);
+  
+  if (typeof currentRole !== 'undefined' && currentRole !== 'citizen') {
+    console.warn(`[REWARD DEBUG] Skipped: Role is ${currentRole}, not citizen.`);
+    return;
+  }
+  
+  if (activeIntent && activeIntent.binId === bin.id) {
+    const elapsed = Date.now() - activeIntent.startTime;
+    console.log(`[REWARD DEBUG] Active intent found for ${bin.id}. Elapsed: ${Math.round(elapsed/1000)}s`);
+    
+    // Only valid if within 90s
+    if (elapsed < 90000) {
+      const initial = Number(activeIntent.initialFill) || 0;
+      const current = Number(currentFill) || 0;
+      const realIncrease = current - initial;
+      
+      console.log(`[REWARD DEBUG] Math: ${current} (current) - ${initial} (initial) = ${realIncrease} (realIncrease)`);
+
+      if (realIncrease > 0) {
+        showToast(`Waste detected! +${realIncrease} points!`, "success");
+        console.log(`[REWARD SUCCESS] Awarding ${realIncrease} points for ${bin.id}`);
+        
+        activeIntent = null;
+        
+        const statusEl = document.getElementById('active-reward-status');
+        if (statusEl) {
+          statusEl.innerHTML = `<i class="fas fa-check-circle"></i> Waste detected! +${realIncrease} points credited.`;
+          statusEl.style.borderColor = '#22c55e';
+          statusEl.style.background = 'rgba(34, 197, 94, 0.1)';
+          setTimeout(() => { 
+            if (statusEl.parentElement) statusEl.parentElement.innerHTML = ''; 
+          }, 8000);
+        }
+        
+        if (typeof awardPoints === 'function') awardPoints(bin, realIncrease);
+      } else {
+        console.log(`[REWARD DEBUG] No real increase from initial level (${initial}).`);
+      }
+    } else {
+      console.warn(`[REWARD DEBUG] Intent expired for ${bin.id}`);
+      activeIntent = null;
+    }
+  } else {
+    if (activeIntent) console.log(`[REWARD DEBUG] Intent mismatch: Waiting for ${activeIntent.binId}, but got spike on ${bin.id}`);
+  }
+}
+
+
+// ==========================================
+// TOAST NOTIFICATIONS
+// ==========================================
+function showToast(message, type = 'info') {
+  const container = document.getElementById('toastContainer');
+  if (!container) return;
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  
+  let icon = 'info-circle';
+  if (type === 'success') icon = 'check-circle';
+  if (type === 'warning') icon = 'exclamation-triangle';
+  if (type === 'error') icon = 'times-circle';
+  
+  toast.innerHTML = `<i class="fas fa-${icon}"></i> ${message}`;
+  toast.style.padding = '12px 20px';
+  toast.style.background = 'var(--surface2)';
+  toast.style.borderLeft = `4px solid var(--${type === 'error' ? 'red' : type === 'warning' ? 'yellow' : type === 'success' ? 'green' : 'accent'})`;
+  toast.style.borderRadius = '4px';
+  toast.style.marginBottom = '10px';
+  toast.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
+  toast.style.color = 'var(--text)';
+  toast.style.display = 'flex';
+  toast.style.alignItems = 'center';
+  toast.style.gap = '10px';
+  toast.style.fontSize = '14px';
+  toast.style.animation = 'slideIn 0.3s ease-out forwards';
+  
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.style.animation = 'slideOut 0.3s ease-in forwards';
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
+}
+
+
+// ==========================================
+// THEME
+// ==========================================
+function toggleTheme() {
+  document.body.classList.toggle('light-mode');
+  const isLight = document.body.classList.contains('light-mode');
+  localStorage.setItem('theme', isLight ? 'light' : 'dark');
+  const icon = document.querySelector('#themeToggleBtn i');
+  if (icon) {
+    icon.className = isLight ? 'fas fa-sun' : 'fas fa-moon';
+  }
+  
+  // Update map tiles
+  const style = isLight ? 'light_all' : 'dark_all';
+  const url = `https://{s}.basemaps.cartocdn.com/${style}/{z}/{x}/{y}{r}.png`;
+  if (mainTileLayer) mainTileLayer.setUrl(url);
+  if (miniTileLayer) miniTileLayer.setUrl(url);
+}
+
+
+// ==========================================
+// MAP CONTROLS
+// ==========================================
+function clearRoute() {
+  if (routeLayer) {
+    mainMap.removeLayer(routeLayer);
+    routeLayer = null;
+  }
+  
+  if (_vehicleMarker) {
+    _vehicleMarker.setLatLng([LPU_CENTER[0], LPU_CENTER[1]]);
+  }
+  window._customDepot = null;
+  
+  const btn = document.querySelector('.map-ctrl-btn.green');
+  if (btn) btn.innerHTML = '<i class="fas fa-route"></i><span>Optimize Route</span>';
+  
+  document.getElementById('routeStats').style.display = 'none';
+  
+  document.getElementById('routeList').innerHTML = `
+    <div class="empty-state" style="padding:20px;text-align:center;color:var(--text2)">
+      <i class="fas fa-route" style="font-size:32px;margin-bottom:10px;opacity:0.3"></i>
+      <p>No active route.<br>Click "Optimize Route" to generate one.</p>
+    </div>
+  `;
+}
+
+// ==========================================
+// MAP FILTER & FULLSCREEN
+// ==========================================
+function mapFilter(type, btn) {
+  document.querySelectorAll('.map-controls .map-ctrl-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  
+  Object.entries(mainMarkers).forEach(([id, marker]) => {
+    const bin = binsData.find(b => b.id === id);
+    if (!bin) return;
+    if (type === 'all') {
+      marker.setOpacity(1);
+    } else if (type === 'pickup') {
+      marker.setOpacity(bin.fill >= 60 ? 1 : 0.2);
+    }
+  });
+}
+
+function toggleMapFullscreen() {
+  const layout = document.getElementById('mapLayout');
+  const header = document.getElementById('mapPageHeader');
+  const controls = document.getElementById('mapControls');
+  const btn = document.getElementById('fsBtn');
+  
+  if (!layout) return;
+  layout.classList.toggle('map-fullscreen');
+  document.body.classList.toggle('map-is-fullscreen');
+  
+  const isFS = layout.classList.contains('map-fullscreen');
+  if (header) header.style.display = isFS ? 'none' : '';
+  
+  if (controls) {
+    if (isFS) {
+      controls.classList.add('map-fullscreen-controls');
+    } else {
+      controls.classList.remove('map-fullscreen-controls');
+    }
+  }
+  
+  if (btn) {
+    btn.innerHTML = isFS
+      ? '<i class="fas fa-compress"></i>'
+      : '<i class="fas fa-expand"></i>';
+    btn.title = isFS ? 'Exit Fullscreen' : 'Fullscreen';
+  }
+    
+  setTimeout(() => { if (mainMap) mainMap.invalidateSize(); }, 200);
+}
+
+// ──────────────────────────────────────────────
+//  MISSING UI FUNCTIONS
+// ──────────────────────────────────────────────
+function filterAlerts(type, btn) {
+  document.querySelectorAll('#page-alerts .filter-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  generateAlerts(); // Filter logic can be improved later
+}
+
+function clearAlerts() {
+  const container = document.getElementById('alertsList');
+  if (container) {
+    container.innerHTML = '<div class="empty-state" style="padding:40px; text-align:center; color:var(--text2)"><i class="fas fa-check-circle" style="font-size:32px; margin-bottom:10px; color:var(--green); opacity:0.3"></i><p>All alerts cleared.</p></div>';
+  }
+  const badge = document.getElementById('alertBadge');
+  if (badge) badge.innerText = '0';
+}
+
+function fetchLeaderboard() {
+  const icon = document.getElementById('lbRefreshIcon');
+  if (icon) icon.classList.add('fa-spin');
+  setTimeout(() => {
+    if (icon) icon.classList.remove('fa-spin');
+    showToast("Leaderboard updated!", "success");
+    updateRewardsUI(); // Refresh UI after potential leaderboard changes
+  }, 800);
+}
+
+function awardPoints(bin, increase) {
+  userPoints += increase; // 1 point per 1% fill
+  const history = {
+    time: new Date().toLocaleString('en-IN'),
+    binName: bin.name,
+    volume: increase + '%',
+    points: increase,
+    status: 'Earned'
+  };
+  rewardHistory.unshift(history);
+  if (rewardHistory.length > 20) rewardHistory.pop();
+  
+  localStorage.setItem(`ecoTrack_points_${currentUser}`, userPoints);
+  localStorage.setItem(`ecoTrack_history_${currentUser}`, JSON.stringify(rewardHistory));
+  updateRewardsUI();
+  showToast(`EcoPoints Earned! +${increase} for cleaning ${bin.name}`, 'success');
+}
+
+function updateRewardsUI() {
+  const ptsEl = document.getElementById('userPoints');
+  const historyBody = document.getElementById('rewardHistoryBody');
+
+  if (ptsEl) {
+    ptsEl.innerText = userPoints.toLocaleString();
+    ptsEl.classList.add('pulse'); // Visual feedback
+    setTimeout(() => ptsEl.classList.remove('pulse'), 500);
+  }
+
+  if (historyBody) {
+    if (rewardHistory.length === 0) {
+      historyBody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:40px; color:var(--text2)">No disposal history yet. Start cleaning!</td></tr>';
+    } else {
+      historyBody.innerHTML = rewardHistory.map(h => `
+        <tr>
+          <td>${h.time}</td>
+          <td>${h.binName}</td>
+          <td>${h.volume}</td>
+          <td style="color:var(--green); font-weight:700">+${h.points}</td>
+        </tr>
+      `).join('');
+    }
+  }
+}
+

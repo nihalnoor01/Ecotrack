@@ -1,478 +1,111 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
-  <title>EcoTrack — Smart Waste Fill Level & Route Optimization</title>
-  <meta name="description"
-    content="Real-time smart waste bin monitoring and route optimization powered by ESP32 ultrasonic sensors." />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap"
-    rel="stylesheet" />
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="style.css" />
-  <script src="https://unpkg.com/html5-qrcode"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EcoTrack — Smart Waste Management</title>
+  <link rel="stylesheet" href="landing.css">
 </head>
-
 <body>
-  <div class="particles" id="particles"></div>
 
-  <!-- SIDEBAR -->
-  <aside class="sidebar" id="sidebar">
-    <div class="sidebar-logo">
-      <div class="logo-icon"><i class="fas fa-recycle"></i></div>
-      <div class="logo-text">
-        <span class="logo-name">EcoTrack</span>
-        <span class="logo-sub">Smart Waste System</span>
-      </div>
+  <!-- Glass Navbar -->
+  <nav class="navbar">
+    <a href="index.html" class="logo">
+      ECOTRACK
+    </a>
+    <div class="nav-links">
+      <a href="#features">Platform</a>
+      <a href="#info">Technology</a>
+      <a href="#rewards">Citizens</a>
     </div>
-    <nav class="sidebar-nav">
-      <a href="#" class="nav-item active" id="nav-dashboard" data-page="dashboard" onclick="showPage('dashboard',this)">
-        <i class="fas fa-tachometer-alt"></i><span>Dashboard</span>
-      </a>
-      <a href="#" class="nav-item" id="nav-bins" data-page="bins" onclick="showPage('bins',this)">
-        <i class="fas fa-trash-alt"></i><span>Bin Monitor</span>
-        <span class="nav-badge" id="alertBadge">0</span>
-      </a>
-      <a href="#" class="nav-item" id="nav-map" data-page="map" onclick="showPage('map',this)">
-        <i class="fas fa-map-marked-alt"></i><span>Route Map</span>
-      </a>
-      <a href="#" class="nav-item" id="nav-analytics" data-page="analytics" onclick="showPage('analytics',this)">
-        <i class="fas fa-chart-line"></i><span>Analytics</span>
-      </a>
-      <a href="#" class="nav-item" id="nav-esp32" data-page="esp32" onclick="showPage('esp32',this)">
-        <i class="fas fa-microchip"></i><span>ESP32 Config</span>
-      </a>
-      <a href="#" class="nav-item" id="nav-rewards" data-page="rewards" onclick="showPage('rewards',this)">
-        <i class="fas fa-gift"></i><span>Rewards</span>
-      </a>
-      <a href="#" class="nav-item" id="nav-logout" onclick="logout()">
-        <i class="fas fa-sign-out-alt"></i><span>Logout</span>
-      </a>
-    </nav>
-    <div class="sidebar-status">
-      <div class="status-dot" id="connDot"></div>
-      <span id="connStatus">Connecting…</span>
+    <div class="nav-actions">
+      <a href="login.html" class="btn-login">Login</a>
+      <a href="signup.html" class="btn-primary">Sign Up</a>
     </div>
-  </aside>
+  </nav>
 
-  <!-- TOPBAR -->
-  <header class="topbar">
-    <button class="menu-btn" onclick="toggleSidebar()"><i class="fas fa-bars"></i></button>
-    <div class="topbar-title" id="pageTitle">Dashboard</div>
-    <div class="topbar-right">
-      <div class="topbar-time" id="clock"></div>
-      <div class="notification-btn" onclick="showPage('alerts',document.querySelector('[data-page=alerts]'))">
-        <i class="fas fa-bell"></i>
-        <span class="notif-count" id="notifCount">0</span>
-      </div>
-      <div class="user-avatar"><i class="fas fa-user-graduate"></i></div>
+  <!-- Hero Section -->
+  <header class="hero reveal">
+    <div class="hero-badge">
+      Intelligence Meets Sustainability
+    </div>
+    <h1>The Standard for Modern <span>Waste Management</span></h1>
+    <p>A sophisticated, real-time ecosystem utilizing ESP32 ultrasonic sensors and OpenRouteService mathematics to eliminate arbitrary collection paths and incentivize citizen participation.</p>
+    
+    <div class="hero-cta">
+      <a href="signup.html" class="btn-primary btn-large">
+        Initialize Platform
+      </a>
+      <a href="dashboard.html" class="btn-login" style="padding: 18px 40px; border: 1px solid transparent;">
+        View Live Dashboard
+      </a>
     </div>
   </header>
 
-  <!-- MAIN -->
-  <main class="main-content">
+  <!-- Detailed Info Section -->
+  <section id="info" class="info-section">
+    <div class="info-grid">
+      <div class="info-text reveal">
+        <h2>Uncompromising Precision.</h2>
+        <p>EcoTrack completely replaces the traditional, static garbage collection schedule with a dynamic, data-driven network. By installing ESP32 ultrasonic sensors on civic infrastructure, we create a continuous stream of fill-level metrics.</p>
+        <p>When capacities reach predefined thresholds, the system seamlessly interfaces with OpenRouteService to calculate the singular optimal route across physical road networks, ensuring maximum fuel efficiency and zero wasted labor.</p>
+      </div>
+      <div class="info-image reveal" style="transition-delay: 0.2s;">
+        <!-- Placeholder for a high-end graphic or rendering -->
+        [ Architecture Visualization ]
+      </div>
+    </div>
+  </section>
 
-    <!-- DASHBOARD -->
-    <section class="page active" id="page-dashboard">
-      <div class="page-header">
-        <h1>Overview Dashboard</h1>
-        <p>Real-time waste bin monitoring across your collection zones</p>
+  <!-- Features Section -->
+  <section id="features" class="features">
+    <h2 class="section-title reveal">Core Infrastructure</h2>
+    <div class="features-grid">
+      <div class="feature-card reveal" style="transition-delay: 0s;">
+        <div class="feature-number">01</div>
+        <h3>Algorithmic Routing</h3>
+        <p>We discard Euclidean estimations. Our architecture leverages actual street layouts and directional constraints via OpenRouteService to dictate the undisputed optimal collection path.</p>
       </div>
-      <div class="kpi-grid">
-        <div class="kpi-card">
-          <div class="kpi-icon" style="background:linear-gradient(135deg,#667eea,#764ba2)"><i class="fas fa-trash"></i>
-          </div>
-          <div class="kpi-info"><span class="kpi-value" id="kpiTotal">8</span><span class="kpi-label">Total Bins</span>
-          </div>
-          <div class="kpi-trend up">Active</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-icon" style="background:linear-gradient(135deg,#f093fb,#f5576c)"><i
-              class="fas fa-exclamation-triangle"></i></div>
-          <div class="kpi-info"><span class="kpi-value" id="kpiCritical">0</span><span class="kpi-label">Critical
-              (&gt;80%)</span></div>
-          <div class="kpi-trend" id="critTrend">Monitoring</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-icon" style="background:linear-gradient(135deg,#4facfe,#00f2fe)"><i
-              class="fas fa-chart-bar"></i></div>
-          <div class="kpi-info"><span class="kpi-value" id="kpiAvg">0%</span><span class="kpi-label">Avg Fill
-              Level</span></div>
-          <div class="kpi-trend" id="avgTrend">—</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-icon" style="background:linear-gradient(135deg,#43e97b,#38f9d7)"><i class="fas fa-route"></i>
-          </div>
-          <div class="kpi-info"><span class="kpi-value" id="kpiRoute">0</span><span class="kpi-label">Need Pickup</span>
-          </div>
-          <div class="kpi-trend">Route Ready</div>
-        </div>
+      <div class="feature-card reveal" style="transition-delay: 0.2s;">
+        <div class="feature-number">02</div>
+        <h3>IoT Telemetry</h3>
+        <p>Industrial-grade ESP32 modules provide constant ultrasonic depth readings. The dashboard instantly reflects physical realities, rendering manual inspections obsolete.</p>
       </div>
-      <div class="dash-grid">
-        <div class="dash-card bins-overview">
-          <div class="card-header">
-            <h2><i class="fas fa-trash-alt"></i> Live Bin Status</h2>
-            <button class="refresh-btn" onclick="refreshData()"><i class="fas fa-sync-alt"
-                id="refreshIcon"></i></button>
-          </div>
-          <div class="bin-cards-grid" id="binCardsGrid"></div>
-        </div>
-        <div class="dash-card chart-card">
-          <div class="card-header">
-            <h2><i class="fas fa-chart-pie"></i> Fill Distribution</h2>
-          </div>
-          <div class="donut-wrap">
-            <canvas id="donutChart" width="220" height="220"></canvas>
-            <div class="donut-center"><span id="donutPercent">0%</span><small>Average</small></div>
-          </div>
-          <div class="donut-legend" id="donutLegend"></div>
-        </div>
-        <div class="dash-card activity-card">
-          <div class="card-header">
-            <h2><i class="fas fa-history"></i> Activity Feed</h2>
-            <button class="clear-btn" onclick="clearFeed()">Clear</button>
-          </div>
-          <div class="activity-list" id="activityFeed">
-            <div class="activity-item info">
-              <i class="fas fa-info-circle"></i>
-              <div><strong>System Started</strong><span>Connecting to ESP32 sensors…</span></div>
-            </div>
-          </div>
-        </div>
-        <div class="dash-card map-preview-card">
-          <div class="card-header">
-            <h2><i class="fas fa-map"></i> Bin Locations</h2>
-            <button class="view-btn" onclick="showPage('map',document.querySelector('[data-page=map]'))">Full
-              Map</button>
-          </div>
-          <div id="miniMap" style="height:220px;border-radius:12px;overflow:hidden;"></div>
-        </div>
+      <div class="feature-card reveal" style="transition-delay: 0.4s;">
+        <div class="feature-number">03</div>
+        <h3>Citizen Economy</h3>
+        <p>Behavioral economics applied to sanitation. Citizens upload photographic proof of disposal, instantly earning verified digital tokens to foster sustainable civic engagement.</p>
       </div>
-    </section>
+    </div>
+  </section>
 
-    <!-- BIN MONITOR -->
-    <section class="page" id="page-bins">
-      <div class="page-header">
-        <h1>Bin Monitor</h1>
-        <p>Detailed fill level readings from all ESP32 ultrasonic sensors</p>
-      </div>
-      <div class="filter-bar">
-        <button class="filter-btn active" onclick="filterBins('all',this)">All Bins</button>
-        <button class="filter-btn" onclick="filterBins('critical',this)">Critical</button>
-        <button class="filter-btn" onclick="filterBins('warning',this)">Warning</button>
-        <button class="filter-btn" onclick="filterBins('normal',this)">Normal</button>
-        <button class="filter-btn" onclick="filterBins('empty',this)">Empty</button>
-        <div class="search-box">
-          <i class="fas fa-search"></i>
-          <input type="text" id="binSearch" placeholder="Search bins…" oninput="searchBins(this.value)" />
-        </div>
-      </div>
-      <div class="bin-detail-grid" id="binDetailGrid"></div>
-    </section>
+  <!-- Footer -->
+  <footer class="reveal">
+    <p>&copy; 2026 EcoTrack Systems. All rights reserved.</p>
+  </footer>
 
-    <!-- MAP -->
-    <section class="page" id="page-map">
-      <div class="page-header">
-        <h1>Route Optimization Map</h1>
-        <p>Intelligent collection route based on real-time fill levels</p>
-      </div>
-      <div class="map-controls">
-        <button class="map-ctrl-btn active" onclick="mapFilter('all',this)"><i class="fas fa-th"></i> All Bins</button>
-        <button class="map-ctrl-btn" onclick="mapFilter('pickup',this)"><i class="fas fa-exclamation"></i> Need
-          Pickup</button>
-        <button class="map-ctrl-btn green" onclick="optimizeRoute()"><i class="fas fa-route"></i> Optimize
-          Route</button>
-        <button class="map-ctrl-btn" onclick="clearRoute()"><i class="fas fa-times"></i> Clear Route</button>
-      </div>
-      <div class="map-layout">
-        <div id="mainMap" style="flex:1;min-height:520px;border-radius:16px;"></div>
-        <div class="route-panel">
-          <h3><i class="fas fa-list-ol"></i> Collection Route</h3>
-          <div id="routeList">
-            <p class="route-empty">Click "Optimize Route" to generate the optimal sequence.</p>
-          </div>
-          <div class="route-stats" id="routeStats" style="display:none">
-            <div><i class="fas fa-trash"></i><span id="routeBinCount">0</span> bins</div>
-            <div><i class="fas fa-road"></i><span id="routeDist">0 km</span></div>
-            <div><i class="fas fa-clock"></i><span id="routeTime">0 min</span></div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ANALYTICS -->
-    <section class="page" id="page-analytics">
-      <div class="page-header">
-        <h1>Analytics</h1>
-        <p>Historical fill level trends and performance metrics</p>
-      </div>
-      <div class="analytics-grid">
-        <div class="dash-card" style="grid-column:1/-1">
-          <div class="card-header">
-            <h2><i class="fas fa-chart-line"></i> Fill Level Trends (Last 24h)</h2>
-            <select id="binSelector" onchange="updateLineChart()"
-              style="background:#1e2a3a;color:#fff;border:1px solid #2d3f55;border-radius:8px;padding:6px 12px;">
-              <option value="all">All Bins Average</option>
-            </select>
-          </div>
-          <canvas id="lineChart" height="100"></canvas>
-        </div>
-        <div class="dash-card">
-          <div class="card-header">
-            <h2><i class="fas fa-chart-bar"></i> Bin Comparison</h2>
-          </div>
-          <canvas id="barChart" height="180"></canvas>
-        </div>
-        <div class="dash-card">
-          <div class="card-header">
-            <h2><i class="fas fa-info-circle"></i> System Stats</h2>
-          </div>
-          <div class="stats-list" id="statsList"></div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ESP32 CONFIG -->
-    <section class="page" id="page-esp32">
-      <div class="page-header">
-        <h1>ESP32 Configuration</h1>
-        <p>Manage hardware connections and sensor parameters</p>
-      </div>
-      <div class="esp-grid">
-        <div class="dash-card">
-          <div class="card-header">
-            <h2><i class="fas fa-wifi"></i> Connection Settings</h2>
-          </div>
-          <div class="form-group">
-            <label>API Endpoint</label>
-            <div class="input-row">
-              <input type="text" id="apiEndpoint" value="http://your-server/api/data"
-                placeholder="http://server/api/data" />
-              <button onclick="testConnection()"><i class="fas fa-plug"></i> Test</button>
-            </div>
-          </div>
-          <div class="form-group">
-            <label>Update Interval: <span id="intervalVal">30s</span></label>
-            <input type="range" id="updateInterval" min="5" max="300" value="30"
-              oninput="document.getElementById('intervalVal').textContent=this.value+'s'" />
-          </div>
-          <div class="form-group">
-            <label>Connection Mode</label>
-            <select id="connMode" onchange="switchMode(this.value)">
-              <option value="demo">Demo Mode (Simulated Data)</option>
-              <option value="http">HTTP REST API</option>
-              <option value="ws">WebSocket</option>
-              <option value="firebase">Firebase Realtime DB</option>
-            </select>
-          </div>
-          <button class="save-btn" onclick="saveConfig()"><i class="fas fa-save"></i> Save Config</button>
-          <div id="connTestResult" style="margin-top:12px;"></div>
-        </div>
-        <div class="dash-card">
-          <div class="card-header">
-            <h2><i class="fas fa-sliders-h"></i> Sensor Parameters</h2>
-          </div>
-          <div class="form-group"><label>Bin Height (cm)</label><input type="number" id="binHeight" value="50" min="10"
-              max="200" /></div>
-          <div class="form-group"><label>Critical Threshold (%)</label><input type="number" id="critThresh" value="80"
-              min="50" max="99" /></div>
-          <div class="form-group"><label>Warning Threshold (%)</label><input type="number" id="warnThresh" value="60"
-              min="30" max="90" /></div>
-          <div class="form-group">
-            <label>Sensor Type</label>
-            <select id="sensorType">
-              <option value="hc-sr04">HC-SR04 Ultrasonic</option>
-              <option value="jsn-sr04t">JSN-SR04T Waterproof</option>
-            </select>
-          </div>
-          <button class="save-btn" onclick="saveSensorConfig()"><i class="fas fa-microchip"></i> Apply Sensor
-            Config</button>
-        </div>
-        <div class="dash-card" style="grid-column:1/-1">
-          <div class="card-header">
-            <h2><i class="fas fa-code"></i> ESP32 Firmware Code</h2>
-            <button class="copy-btn" onclick="copyCode()"><i class="fas fa-copy"></i> Copy Code</button>
-          </div>
-          <pre class="code-block" id="esp32Code"></pre>
-        </div>
-        <div class="dash-card" style="grid-column:1/-1">
-          <div class="card-header">
-            <h2><i class="fas fa-list"></i> Registered Bins</h2>
-            <button class="save-btn" onclick="showAddBinModal()"><i class="fas fa-plus"></i> Add Bin</button>
-          </div>
-          <div class="bin-table-wrap">
-            <table class="bin-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Name</th>
-                  <th>Location</th>
-                  <th>Device ID</th>
-                  <th>Fill %</th>
-                  <th>Status</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody id="binTableBody"></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ALERTS -->
-    <section class="page" id="page-alerts">
-      <div class="page-header">
-        <h1>Alerts &amp; Notifications</h1>
-        <p>System alerts for overfilling prevention</p>
-      </div>
-      <div class="filter-bar">
-        <button class="filter-btn active" onclick="filterAlerts('all',this)">All</button>
-        <button class="filter-btn" onclick="filterAlerts('critical',this)">Critical</button>
-        <button class="filter-btn" onclick="filterAlerts('warning',this)">Warning</button>
-        <button class="filter-btn" onclick="filterAlerts('info',this)">Info</button>
-        <button class="clear-btn" style="margin-left:auto" onclick="clearAlerts()">Clear All</button>
-      </div>
-    <!-- REWARDS -->
-    <section class="page" id="page-rewards">
-      <div class="page-header">
-        <h1>EcoRewards Program</h1>
-        <p>Earn points for every bit of waste you dispose correctly!</p>
-      </div>
+  <!-- Scroll Animation Script -->
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const reveals = document.querySelectorAll('.reveal');
       
-      <div class="kpi-grid">
-        <div class="kpi-card" style="border-bottom: 4px solid var(--accent);">
-          <div class="kpi-icon" style="background:linear-gradient(135deg,#FFD700,#FFA500)"><i class="fas fa-coins"></i></div>
-          <div class="kpi-info">
-            <span class="kpi-value" id="userPoints">0</span>
-            <span class="kpi-label">Total Points</span>
-          </div>
-        </div>
-        <div class="kpi-card" style="border-bottom: 4px solid var(--accent2);">
-          <div class="kpi-icon" style="background:linear-gradient(135deg,#00d4ff,#00ff88)"><i class="fas fa-wallet"></i></div>
-          <div class="kpi-info">
-            <span class="kpi-value" id="walletBalance">₹0</span>
-            <span class="kpi-label">Wallet Balance</span>
-          </div>
-        </div>
-        <div class="kpi-card" style="grid-column: span 2;">
-          <div class="kpi-info">
-            <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-              <span class="kpi-label" style="font-weight:700">Withdrawal Progress</span>
-              <span class="kpi-label" id="progressText">0 / 5000 pts</span>
-            </div>
-            <div class="bin-fill-bar" style="height:12px; background:rgba(255,255,255,0.05);">
-              <div class="bin-fill-inner" id="withdrawProgress" style="width:0%; background:linear-gradient(90deg, var(--accent), var(--accent2))"></div>
-            </div>
-            <button class="save-btn" id="withdrawBtn" disabled style="margin-top:12px; width:100%; opacity:0.5; cursor:not-allowed;" onclick="withdrawPoints()">
-              <i class="fas fa-money-bill-wave"></i> Withdraw to UPI
-            </button>
-          </div>
-        </div>
-      </div>
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('active');
+          }
+        });
+      }, { threshold: 0.15 });
 
-      <div class="dash-grid">
-        <div class="dash-card" style="grid-column: 1 / span 2;">
-          <div class="card-header">
-            <h2><i class="fas fa-qrcode"></i> Claim Rewards via QR</h2>
-            <div style="display:flex; gap:10px;">
-               <button class="save-btn" onclick="startQRScanner()"><i class="fas fa-camera"></i> Open Scanner</button>
-               <button class="view-btn" onclick="simulateWasteDisposal()">Simulate Disposal</button>
-            </div>
-          </div>
-          <div id="qr-reader" style="width: 100%; max-width: 500px; margin: 0 auto; border: 1px dashed var(--border); border-radius: 12px; overflow: hidden; display: none;"></div>
-          <div id="qr-reader-results"></div>
-          
-          <div class="card-header" style="margin-top:30px;">
-            <h2><i class="fas fa-history"></i> Recent Disposals & Points Earned</h2>
-          </div>
-          <div class="bin-table-wrap">
-            <table class="bin-table">
-              <thead>
-                <tr>
-                  <th>Date & Time</th>
-                  <th>Bin Name</th>
-                  <th>Waste Volume</th>
-                  <th>Points Earned</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody id="rewardHistoryBody">
-                <tr><td colspan="5" style="text-align:center; padding:40px; color:var(--text2)">No disposal history yet. Start cleaning!</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </section>
+      reveals.forEach(reveal => {
+        observer.observe(reveal);
+      });
 
-  </main>
-
-  <!-- ADD BIN MODAL -->
-  <div class="modal-overlay" id="addBinModal">
-    <div class="modal">
-      <div class="modal-header">
-        <h2><i class="fas fa-plus-circle"></i> Add New Bin</h2>
-        <button onclick="closeModal()"><i class="fas fa-times"></i></button>
-      </div>
-      <div class="modal-body">
-        <div class="form-group"><label>Bin Name</label><input type="text" id="newBinName" placeholder="e.g. Bin A1" />
-        </div>
-        <div class="form-group"><label>Location</label><input type="text" id="newBinLocation"
-            placeholder="e.g. Main Street Corner" /></div>
-        <div class="form-group"><label>Latitude</label><input type="number" id="newBinLat" step="0.0001"
-            placeholder="12.9716" /></div>
-        <div class="form-group"><label>Longitude</label><input type="number" id="newBinLng" step="0.0001"
-            placeholder="77.5946" /></div>
-        <div class="form-group"><label>Device ID</label><input type="text" id="newBinDeviceId"
-            placeholder="ESP32-001" /></div>
-      </div>
-      <div class="modal-footer">
-        <button class="cancel-btn" onclick="closeModal()">Cancel</button>
-        <button class="save-btn" onclick="addNewBin()"><i class="fas fa-check"></i> Add Bin</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- REWARD MODAL (QR CODE) -->
-  <div class="modal-overlay" id="rewardModal">
-    <div class="modal" style="text-align: center;">
-      <div class="modal-header">
-        <h2 style="width:100%; justify-content:center;"><i class="fas fa-gift"></i> Reward Earned!</h2>
-      </div>
-      <div class="modal-body" style="padding: 30px;">
-        <div style="margin-bottom: 20px;">
-          <i class="fas fa-check-circle" style="font-size: 50px; color: var(--accent); margin-bottom: 15px;"></i>
-          <h3 id="rewardPointsValue" style="font-size: 24px; font-weight: 800; color: #fff;">+0 Points</h3>
-          <p style="color: var(--text2); font-size: 13px; margin-top: 5px;">Scan the QR below to claim your EcoPoints</p>
-        </div>
-        
-        <div id="qrContainer" style="background: #fff; padding: 15px; border-radius: 12px; display: inline-block; margin-bottom: 20px; box-shadow: 0 0 20px rgba(0,255,136,0.2);">
-          <!-- QR Code Image will be injected here -->
-          <img id="qrCodeImg" src="" alt="QR Code" style="display: block; width: 180px; height: 180px;" />
-        </div>
-
-        <div style="background: rgba(0,212,255,0.1); border: 1px solid rgba(0,212,255,0.2); padding: 12px; border-radius: 10px; font-size: 12px;">
-          <p><strong>Point Calculation:</strong> 1% Waste = 1 EcoPoint</p>
-        </div>
-      </div>
-      <div class="modal-footer" style="justify-content: center; padding-bottom: 30px;">
-        <button class="save-btn" onclick="closeRewardModal()" style="padding: 12px 40px; font-size: 15px;">
-          Claim Reward
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <div class="toast-container" id="toastContainer"></div>
-
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <script src="app.js"></script>
+      // Trigger initial reveals immediately
+      setTimeout(() => {
+        document.querySelector('.hero.reveal').classList.add('active');
+      }, 100);
+    });
+  </script>
 </body>
-
 </html>

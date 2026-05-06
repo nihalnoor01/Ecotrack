@@ -1,7 +1,10 @@
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
+
 const express = require('express');
 const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
-const path = require('path');
+const { computeOptimizedRoute } = require('./routeOptimizer');
 
 const app = express();
 app.use(cors());
@@ -130,6 +133,29 @@ app.post('/api/bins', (req, res) => {
       console.log(`[NEW BIN] Registered: ${b.name} to Database`);
       res.json({ success: true, bin: b });
   });
+});
+
+// POST /api/route → compute optimized route using ORS + Nearest Neighbor
+app.post('/api/route', async (req, res) => {
+  const threshold = req.body.threshold || 80;
+  const depot = req.body.depot || null;    // { lat, lng } from truck position
+  const bins = req.body.bins || null;      // Array of bins with current fill levels
+
+  if (!bins || !Array.isArray(bins) || bins.length === 0) {
+    return res.status(400).json({ error: 'No bin data provided' });
+  }
+
+  if (!depot || !depot.lat || !depot.lng) {
+    return res.status(400).json({ error: 'No depot/truck position provided' });
+  }
+
+  try {
+    const result = await computeOptimizedRoute(bins, threshold, depot);
+    res.json(result);
+  } catch (routeErr) {
+    console.error('[ROUTE ERROR]', routeErr);
+    res.status(500).json({ error: 'Route optimization failed: ' + routeErr.message });
+  }
 });
 
 // Serve static files (index.html, app.js, style.css) from this folder

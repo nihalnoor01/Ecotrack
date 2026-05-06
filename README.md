@@ -29,7 +29,7 @@ A professional-grade IoT solution for real-time waste monitoring and route optim
    ```bash
    node server.js
    ```
-4. The dashboard will be available at `http://localhost:3000`.
+4. The dashboard will be available at `https://eco-track-smartbin-system.onrender.com`.
 
 ## Hardware Note
 The ESP32 firmware is not included in this repository to protect hardware credentials. Please refer to your local backup for the `.ino` file.
