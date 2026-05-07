@@ -43,7 +43,7 @@ db.serialize(() => {
     if (row && row.count === 0) {
       console.log('[DB] Populating default LPU bins...');
       const stmt = db.prepare(`INSERT INTO bins (id, name, location, lat, lng, deviceId, fill, status, isLive, lastUpdated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-      
+
       const defaultBins = [
         { id: "bin_1", name: "UniMall, LPU", location: "Lovely Professional University UniMall", lat: 31.2548, lng: 75.7015, deviceId: "ESP32-LIVE", fill: 0, status: "Empty", isLive: true },
         { id: "bin_2", name: "Block 30 – Admissions", location: "Block 30 Admissions, LPU, Phagwara", lat: 31.2562, lng: 75.7048, deviceId: "SIM-002", fill: 68, status: "Warning", isLive: false },
@@ -66,7 +66,7 @@ db.serialize(() => {
 function getStatus(fill) {
   if (fill >= 80) return "Critical";
   if (fill >= 60) return "Warning";
-  if (fill > 0)  return "Normal";
+  if (fill > 0) return "Normal";
   return "Empty";
 }
 
@@ -99,9 +99,9 @@ app.post('/api/update', (req, res) => {
   const status = getStatus(safeFill);
   const now = new Date().toISOString();
 
-  db.run(`UPDATE bins SET fill = ?, status = ?, lastUpdated = ? WHERE deviceId = ?`, 
-    [safeFill, status, now, deviceId], 
-    function(err) {
+  db.run(`UPDATE bins SET fill = ?, status = ?, lastUpdated = ? WHERE deviceId = ?`,
+    [safeFill, status, now, deviceId],
+    function (err) {
       if (err) {
         return res.status(500).json({ error: err.message });
       }
@@ -109,10 +109,10 @@ app.post('/api/update', (req, res) => {
         console.warn(`[WARN] Unknown deviceId: "${deviceId}"`);
         return res.status(404).json({ error: "Device not registered." });
       }
-      
+
       console.log(`[ESP32 UPDATE] ${deviceId} → ${safeFill}% — ${status}`);
       res.json({ success: true, message: "Database updated" });
-  });
+    });
 });
 
 // POST /api/bins  → add a new bin from the UI
@@ -126,13 +126,13 @@ app.post('/api/bins', (req, res) => {
 
   db.run(`INSERT INTO bins (id, name, location, lat, lng, deviceId, fill, status, isLive, lastUpdated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [b.id, b.name, b.location, b.lat, b.lng, b.deviceId, b.fill, b.status, 0, b.lastUpdated],
-    function(err) {
+    function (err) {
       if (err) {
         return res.status(500).json({ error: err.message });
       }
       console.log(`[NEW BIN] Registered: ${b.name} to Database`);
       res.json({ success: true, bin: b });
-  });
+    });
 });
 
 // POST /api/route → compute optimized route using ORS + Nearest Neighbor
@@ -161,18 +161,35 @@ app.post('/api/route', async (req, res) => {
 // Serve static files (index.html, app.js, style.css) from this folder
 app.use(express.static(path.join(__dirname)));
 
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, '0.0.0.0', () => {
+  console.log('');
+  console.log('╔══════════════════════════════════════════════════════╗');
+  console.log('║      EcoTrack – Smart Waste Management System        ║');
+  console.log('╠══════════════════════════════════════════════════════╣');
+  console.log(`║  Server Running on PORT: ${PORT}                      ║`);
+  console.log(`║  Database   →  SQLite (database.sqlite)             ║`);
+  console.log(`║  ESP32 API  →  POST /api/update                      ║`);
+  console.log('╚══════════════════════════════════════════════════════╝');
+  console.log('');
+});
+
 // ============================================================
-// SIMULATION ENGINE (Randomly fills simulated bins)
+// BACKGROUND SIMULATION (Updates SIM bins every 15s)
 // ============================================================
 setInterval(() => {
   db.all(`SELECT id, deviceId, fill FROM bins WHERE isLive = 0`, [], (err, rows) => {
     if (err || !rows) return;
     
     rows.forEach(bin => {
-      // 70% chance to increase slightly (1-3%)
-      if (Math.random() > 0.3) {
-        const increase = Math.floor(Math.random() * 3) + 1;
-        const newFill = Math.min(100, bin.fill + increase);
+      // Small random chance to increase (30% chance every 15s)
+      if (Math.random() > 0.7) {
+        const increase = Math.floor(Math.random() * 8) + 2; // +2% to +10%
+        let newFill = Math.min(100, bin.fill + increase);
+        
+        // If it was already full, reset it to 0 (someone emptied it in simulation)
+        if (bin.fill >= 100) newFill = 0;
+
         const status = getStatus(newFill);
         const now = new Date().toISOString();
 
@@ -181,17 +198,5 @@ setInterval(() => {
       }
     });
   });
-}, 30000); // Update simulated bins every 30 seconds
+}, 15000); 
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log('');
-  console.log('╔══════════════════════════════════════════════════════╗');
-  console.log('║      EcoTrack – Smart Waste Management System        ║');
-  console.log('╠══════════════════════════════════════════════════════╣');
-  console.log(`║  Server Running on PORT: ${PORT}                      ║`);
-  console.log(`║  Database   →  SQLite (database.sqlite)              ║`);
-  console.log(`║  ESP32 API  →  POST /api/update                      ║`);
-  console.log('╚══════════════════════════════════════════════════════╝');
-  console.log('');
-});
