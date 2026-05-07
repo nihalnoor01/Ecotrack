@@ -478,14 +478,19 @@ async function optimizeRoute() {
       latlngs = result.route.map(n => [n.lat, n.lng]);
     }
 
+    // Dynamic route color based on theme
+    const isLight = document.body.classList.contains('light-mode');
+    const routeColor = isLight ? '#4f46e5' : '#ffffff';
+    const routeOpacity = isLight ? 0.2 : 0.1;
+
     // Draw solid glowing road route
     routeLayer = L.polyline(latlngs, {
-      color: '#ffffff', weight: 10, opacity: 0.1
+      color: routeColor, weight: 10, opacity: routeOpacity
     }).addTo(mainMap);
     
-    // Add white core
+    // Add core
     const routeCore = L.polyline(latlngs, {
-      color: '#ffffff', weight: 2, opacity: 0.8
+      color: routeColor, weight: 2, opacity: 0.8
     }).addTo(mainMap);
     
     // Group them for removal

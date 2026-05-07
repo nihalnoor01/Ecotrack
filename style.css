@@ -408,6 +408,7 @@ body.light-mode .form-group select {
 
 /* Icons & Avatars (Keep white inside colorful backgrounds) */
 body.light-mode .map-ctrl-btn.green {
+  background: var(--green);
   color: #ffffff;
 }
 body.light-mode .kpi-icon,
@@ -757,6 +758,9 @@ body.map-is-fullscreen .main-content {
     width: 100% !important;
     order: 2;
     margin-top: 15px;
+  }
+  #fsBtn {
+    display: none;
   }
   #miniMap {
     height: 300px !important;

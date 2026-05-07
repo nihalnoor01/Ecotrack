@@ -101,8 +101,8 @@ body.light-mode .form-group select {
 body.light-mode .kpi-icon,
 body.light-mode .logo-icon,
 body.light-mode .user-avatar,
-body.light-mode .map-ctrl-btn.green {
-  color: #ffffff;
+body.light-mode .map-ctrl-btn {
+  color: var(--text) !important;
 }
 
 /* Badges */
