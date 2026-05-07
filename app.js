@@ -568,42 +568,18 @@ function updateRewardsUI() {
   }
 }
 
-// SIMULATION FOR TESTING (Simulated Bins Only)
-async function simulateWasteDisposal() {
+// SIMULATION FOR TESTING
+function simulateWasteDisposal() {
   if (currentRole !== 'citizen') return;
-  
-  // Only target simulated bins (bin_2 to bin_6)
-  const simBins = binsData.filter(b => b.id !== 'bin_1');
-  if (simBins.length === 0) return;
-  
-  const targetBin = simBins[Math.floor(Math.random() * simBins.length)];
-  const increment = Math.floor(Math.random() * 15) + 5;
-  const newFill = Math.min(100, targetBin.fill + increment);
-
-  console.log(`[SIMULATION] Updating ${targetBin.name} from ${targetBin.fill}% to ${newFill}%`);
-
-  // 1. Trigger QR logic locally (for reward intent)
-  handleQRSuccess(`ecotrack:bin:${targetBin.id}`);
-
-  // 2. Send update to server so it "sticks"
-  try {
-    const res = await fetch(`${API_URL}/update`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        deviceId: targetBin.deviceId,
-        fill: newFill
-      })
-    });
-    
-    if (res.ok) {
-      // 3. Detect spike for rewards after server update
-      checkFillSpikeIntent(targetBin, increment, newFill);
-      showToast(`Simulation: ${targetBin.name} updated!`, 'info');
+  handleQRSuccess("ecotrack:bin:bin_1");
+  setTimeout(() => {
+    const bin1 = binsData.find(b => b.id === 'bin_1');
+    if (bin1) {
+      const inc = Math.floor(Math.random() * 10) + 5;
+      bin1.fill = Math.min(100, bin1.fill + inc);
+      checkFillSpikeIntent(bin1, inc);
     }
-  } catch (err) {
-    console.error('[SIM ERROR]', err);
-  }
+  }, 3000);
 }
 
 // ==========================================

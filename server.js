@@ -161,6 +161,28 @@ app.post('/api/route', async (req, res) => {
 // Serve static files (index.html, app.js, style.css) from this folder
 app.use(express.static(path.join(__dirname)));
 
+// ============================================================
+// SIMULATION ENGINE (Randomly fills simulated bins)
+// ============================================================
+setInterval(() => {
+  db.all(`SELECT id, deviceId, fill FROM bins WHERE isLive = 0`, [], (err, rows) => {
+    if (err || !rows) return;
+    
+    rows.forEach(bin => {
+      // 70% chance to increase slightly (1-3%)
+      if (Math.random() > 0.3) {
+        const increase = Math.floor(Math.random() * 3) + 1;
+        const newFill = Math.min(100, bin.fill + increase);
+        const status = getStatus(newFill);
+        const now = new Date().toISOString();
+
+        db.run(`UPDATE bins SET fill = ?, status = ?, lastUpdated = ? WHERE id = ?`, 
+          [newFill, status, now, bin.id]);
+      }
+    });
+  });
+}, 30000); // Update simulated bins every 30 seconds
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log('');
