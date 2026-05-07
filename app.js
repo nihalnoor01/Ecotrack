@@ -1098,8 +1098,12 @@ async function fetchLeaderboard() {
     if (error) throw error;
 
     if (lbBody) {
+      // Get current user's name (same logic as used in checkAuth)
+      const rawUser = localStorage.getItem('ecoTrack_user') || 'Resident';
+      const myName = rawUser.includes('@') ? rawUser.split('@')[0] : rawUser;
+
       lbBody.innerHTML = topUsers.map((u, i) => {
-        const isMe = u.name === currentUserName;
+        const isMe = u.name.toLowerCase() === myName.toLowerCase();
         return `
           <tr ${isMe ? 'style="background:rgba(255,255,255,0.05)"' : ''}>
             <td data-label="Rank" style="font-weight:700">${i + 1}</td>
