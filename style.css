@@ -782,14 +782,20 @@ body.map-is-fullscreen .main-content {
   }
   .bin-table td {
     text-align: right;
-    padding: 8px 10px;
+    padding: 12px 10px;
     border: none;
     position: relative;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    min-height: 45px;
   }
   .bin-table td::before {
     content: attr(data-label);
     position: absolute;
     left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
     font-weight: 600;
     color: var(--text2);
     font-size: 11px;
