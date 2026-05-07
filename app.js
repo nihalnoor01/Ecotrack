@@ -1080,46 +1080,54 @@ function clearAlerts() {
   if (badge) badge.innerText = '0';
 }
 
-function fetchLeaderboard() {
+async function fetchLeaderboard() {
   const icon = document.getElementById('lbRefreshIcon');
   const lbBody = document.getElementById('leaderboardBody');
   if (icon) icon.classList.add('fa-spin');
   
-  // Mock leaderboard data
-  const mockLB = [
-    { rank: 1, user: "Rohan_LPU", points: 4520, badge: "🏆 Champ" },
-    { rank: 2, user: "Simran_K", points: 3890, badge: "⭐ Elite" },
-    { rank: 3, user: "Nihal_Eco", points: userPoints, badge: "🔥 You" },
-    { rank: 4, user: "Amit_99", points: 2150, badge: "🌱 Pro" },
-    { rank: 5, user: "Sneha_02", points: 1840, badge: "🍃 Active" }
-  ].sort((a, b) => b.points - a.points);
+  try {
+    if (!window.supabase) throw new Error("Supabase not initialized");
 
-  setTimeout(() => {
-    if (icon) icon.classList.remove('fa-spin');
+    // Fetch top 5 users by points
+    const { data: topUsers, error } = await window.supabase
+      .from('users')
+      .select('name, points')
+      .order('points', { ascending: false })
+      .limit(5);
+
+    if (error) throw error;
+
     if (lbBody) {
-      lbBody.innerHTML = mockLB.map((u, i) => `
-        <tr ${u.user.includes('You') ? 'style="background:rgba(255,255,255,0.05)"' : ''}>
-          <td data-label="Rank" style="font-weight:700">${i + 1}</td>
-          <td data-label="Resident">
-            <div style="display:flex; align-items:center; gap:10px">
-              <div class="user-avatar" style="width:28px; height:28px; font-size:12px">${u.user.charAt(0)}</div>
-              <div>
-                <div style="font-weight:600; font-size:13px">${u.user}</div>
-                <div style="font-size:10px; color:var(--text2)">${u.badge}</div>
+      lbBody.innerHTML = topUsers.map((u, i) => {
+        const isMe = u.name === currentUserName;
+        return `
+          <tr ${isMe ? 'style="background:rgba(255,255,255,0.05)"' : ''}>
+            <td data-label="Rank" style="font-weight:700">${i + 1}</td>
+            <td data-label="Resident">
+              <div style="display:flex; align-items:center; gap:10px">
+                <div class="user-avatar" style="width:28px; height:28px; font-size:12px">${u.name.charAt(0)}</div>
+                <div>
+                  <div style="font-weight:600; font-size:13px">${u.name} ${isMe ? '(You)' : ''}</div>
+                  <div style="font-size:10px; color:var(--text2)">${i === 0 ? '🏆 Champ' : '🌱 Active'}</div>
+                </div>
               </div>
-            </div>
-          </td>
-          <td data-label="Points" style="font-weight:700; color:var(--accent)">${u.points.toLocaleString()}</td>
-        </tr>
-      `).join('');
+            </td>
+            <td data-label="Points" style="font-weight:700; color:var(--accent)">${(u.points || 0).toLocaleString()}</td>
+          </tr>
+        `;
+      }).join('');
     }
-    showToast("Leaderboard updated!", "success");
-    updateRewardsUI();
-  }, 800);
+  } catch (err) {
+    console.error("Leaderboard error:", err);
+    showToast("Could not load leaderboard", "error");
+  } finally {
+    if (icon) icon.classList.remove('fa-spin');
+  }
 }
 
 async function awardPoints(bin, increase) {
-  userPoints += increase; // 1 point per 1% fill
+  userPoints += increase; 
+  
   const history = {
     time: new Date().toLocaleString('en-IN'),
     binName: bin.name,
@@ -1130,15 +1138,16 @@ async function awardPoints(bin, increase) {
   rewardHistory.unshift(history);
   if (rewardHistory.length > 20) rewardHistory.pop();
   
-  localStorage.setItem(`ecoTrack_points_${currentUser}`, userPoints);
+  // Save history locally
   localStorage.setItem(`ecoTrack_history_${currentUser}`, JSON.stringify(rewardHistory));
-  
+  updateRewardsUI();
+
   // Sync to Supabase
   if (window.supabase) {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session } } = await window.supabase.auth.getSession();
       if (session) {
-        const { error } = await supabase
+        const { error } = await window.supabase
           .from('users')
           .update({ points: userPoints })
           .eq('id', session.user.id);
@@ -1150,8 +1159,8 @@ async function awardPoints(bin, increase) {
     }
   }
 
-  updateRewardsUI();
   showToast(`EcoPoints Earned! +${increase} for cleaning ${bin.name}`, 'success');
+  fetchLeaderboard();
 }
 
 function updateRewardsUI() {
