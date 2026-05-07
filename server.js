@@ -76,6 +76,7 @@ function getStatus(fill) {
 
 // GET  /api/bins  → send all bin data to dashboard from DB
 app.get('/api/bins', (req, res) => {
+  console.log(`[GET /api/bins] Request from ${req.ip}`);
   db.all(`SELECT * FROM bins`, [], (err, rows) => {
     if (err) {
       res.status(500).json({ error: err.message });
@@ -90,6 +91,7 @@ app.get('/api/bins', (req, res) => {
 // POST /api/update  → ESP32 sends { deviceId, fill }
 app.post('/api/update', (req, res) => {
   const { deviceId, fill } = req.body;
+  console.log(`[POST /api/update] ${deviceId} -> ${fill}%`);
 
   if (!deviceId || fill === undefined) {
     return res.status(400).json({ error: "Missing deviceId or fill level" });
@@ -175,28 +177,31 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 // ============================================================
-// BACKGROUND SIMULATION (Updates SIM bins every 15s)
+// BACKGROUND SIMULATION (5-second intervals)
 // ============================================================
 setInterval(() => {
   db.all(`SELECT id, deviceId, fill FROM bins WHERE isLive = 0`, [], (err, rows) => {
     if (err || !rows) return;
     
+    console.log(`[SIMULATOR] Checking ${rows.length} simulated bins...`);
+    
     rows.forEach(bin => {
-      // Small random chance to increase (30% chance every 15s)
-      if (Math.random() > 0.7) {
-        const increase = Math.floor(Math.random() * 8) + 2; // +2% to +10%
-        let newFill = Math.min(100, bin.fill + increase);
-        
-        // If it was already full, reset it to 0 (someone emptied it in simulation)
-        if (bin.fill >= 100) newFill = 0;
-
+      // Randomly increase or decrease (-5% to +5%)
+      const change = Math.floor(Math.random() * 11) - 5; 
+      let newFill = Math.min(100, Math.max(0, bin.fill + change));
+      
+      // Update if changed
+      if (newFill !== bin.fill) {
         const status = getStatus(newFill);
         const now = new Date().toISOString();
 
         db.run(`UPDATE bins SET fill = ?, status = ?, lastUpdated = ? WHERE id = ?`, 
-          [newFill, status, now, bin.id]);
+          [newFill, status, now, bin.id], (err) => {
+            if (!err) {
+              console.log(`[SIMULATOR] ${bin.id} updated: ${bin.fill}% -> ${newFill}%`);
+            }
+          });
       }
     });
   });
-}, 15000); 
-
+}, 5000);

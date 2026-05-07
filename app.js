@@ -2,8 +2,11 @@
 // EcoTrack – LPU Campus Smart Waste System
 // ==========================================
 
-const API_URL = 'https://eco-track-smartbin-system.onrender.com/api';
-const LOCAL_API_URL = 'http://localhost:3000/api';
+const RENDER_API = 'https://eco-track-smartbin-system.onrender.com/api';
+const LOCAL_API  = 'http://localhost:3000/api';
+const isLocalDev = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || !window.location.hostname);
+const LOCAL_API_URL = isLocalDev ? LOCAL_API : RENDER_API; // Route optimization endpoint
+console.log(`[API CONFIG] Mode: ${isLocalDev ? 'LOCAL DEV' : 'PRODUCTION'}`);
 let binsData = [];
 let mainMap, miniMap;
 let mainTileLayer, miniTileLayer;
@@ -98,7 +101,7 @@ function updateClock() {
 // ── AUTH & RBAC ──────────────────────────
 let currentRole = null;
 
-function checkAuth() {
+async function checkAuth() {
   const role = localStorage.getItem('ecoTrack_role') || 'citizen';
   const user = localStorage.getItem('ecoTrack_user') || 'Resident';
   currentRole = role;
@@ -111,6 +114,30 @@ function checkAuth() {
   }
   
   applyRBAC(role);
+
+  // Fetch points from Supabase if available
+  if (window.supabase) {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        const { data, error } = await supabase
+          .from('users')
+          .select('points')
+          .eq('id', session.user.id)
+          .single();
+        
+        if (!error && data) {
+          userPoints = data.points;
+          console.log(`[POINTS] Loaded from Supabase: ${userPoints}`);
+          // Fallback update
+          localStorage.setItem(`ecoTrack_points_${currentUser}`, userPoints);
+          updateRewardsUI(); // Refresh UI with real points
+        }
+      }
+    } catch (err) {
+      console.warn('[POINTS] Failed to fetch from Supabase:', err.message);
+    }
+  }
 }
 
 function applyRBAC(role) {
@@ -131,7 +158,10 @@ function applyRBAC(role) {
   }
 }
 
-function logout() {
+async function logout() {
+  if (window.supabase) {
+    await supabase.auth.signOut();
+  }
   localStorage.removeItem('ecoTrack_role');
   localStorage.removeItem('ecoTrack_user'); // Fix: clear user on logout
   window.location.href = 'login.html';
@@ -153,14 +183,42 @@ let _demoMode = false;
 // ==========================================
 async function fetchBinsData() {
   try {
-    const res = await fetch(`${API_URL}/bins`, { 
-      signal: AbortSignal.timeout(3000),
-      headers: { 'Accept': 'application/json' }
-    });
-    if (!res.ok) throw new Error(`Server returned ${res.status}`);
-    const data = await res.json();
-    
-    data.forEach(remoteBin => {
+    let mergedData;
+
+    if (isLocalDev) {
+      // DUAL-FETCH: Live bin from Render, simulated bins from local server
+      const [renderRes, localRes] = await Promise.allSettled([
+        fetch(`${RENDER_API}/bins`, { signal: AbortSignal.timeout(5000), headers: { 'Accept': 'application/json' } }),
+        fetch(`${LOCAL_API}/bins`,  { signal: AbortSignal.timeout(3000), headers: { 'Accept': 'application/json' } })
+      ]);
+
+      let liveBins = [];
+      let simBins  = [];
+
+      if (renderRes.status === 'fulfilled' && renderRes.value.ok) {
+        const data = await renderRes.value.json();
+        liveBins = data.filter(b => b.isLive === true);
+      }
+
+      if (localRes.status === 'fulfilled' && localRes.value.ok) {
+        const data = await localRes.value.json();
+        simBins = data.filter(b => !b.isLive);
+      }
+
+      mergedData = [...liveBins, ...simBins];
+    } else {
+      // PRODUCTION: Single fetch from Render (everything lives there)
+      const res = await fetch(`${RENDER_API}/bins`, {
+        signal: AbortSignal.timeout(3000),
+        headers: { 'Accept': 'application/json' }
+      });
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+      mergedData = await res.json();
+    }
+
+    if (!mergedData || mergedData.length === 0) throw new Error('No bin data received');
+
+    mergedData.forEach(remoteBin => {
       const index = binsData.findIndex(b => b.deviceId === remoteBin.deviceId);
       if (index !== -1) {
         const prevFill = lastKnownFills[remoteBin.deviceId];
@@ -203,7 +261,6 @@ function updateUI() {
   updateDashboardKPIs();
   renderBinCards();
   updateMaps();
-  updateCharts();
   updateRewardsUI();
 }
 
@@ -515,71 +572,43 @@ async function optimizeRoute() {
   }
 }
 
-function awardPoints(bin, increase) {
-  userPoints += increase; // 1 point per 1% fill
-  const history = {
-    time: new Date().toLocaleString('en-IN'),
-    binName: bin.name,
-    volume: increase + '%',
-    points: increase,
-    status: 'Earned'
-  };
-  rewardHistory.unshift(history);
-  localStorage.setItem(`ecoTrack_points_${currentUser}`, userPoints);
-  localStorage.setItem(`ecoTrack_history_${currentUser}`, JSON.stringify(rewardHistory));
-  updateRewardsUI();
-  showToast(`EcoPoints Earned! +${increase} for cleaning ${bin.name}`, 'success');
-}
+// Removed duplicate awardPoints and updateRewardsUI
 
-function updateRewardsUI() {
-  const pointsVal = document.getElementById('pointsVal');
-  const levelVal  = document.getElementById('levelVal');
-  const levelProgress = document.getElementById('levelProgress');
-  const totalEarned = document.getElementById('totalEarned');
-  
-  if (pointsVal) pointsVal.innerText = userPoints;
-  if (totalEarned) totalEarned.innerText = userPoints;
-  
-  // Calculate Level (1000 pts per level)
-  const level = Math.floor(userPoints / 1000) + 1;
-  const nextLevelPts = level * 1000;
-  const currentLevelPts = (level - 1) * 1000;
-  const progress = ((userPoints - currentLevelPts) / (nextLevelPts - currentLevelPts)) * 100;
-  
-  if (levelVal) levelVal.innerText = 'Level ' + level;
-  if (levelProgress) levelProgress.style.width = progress + '%';
-
-  // Render History
-  const list = document.getElementById('rewardHistoryList');
-  if (list) {
-    if (rewardHistory.length === 0) {
-      list.innerHTML = '<div style="padding:40px; text-align:center; color:var(--text2); opacity:0.5">No history yet.</div>';
-    } else {
-      list.innerHTML = rewardHistory.map(h => `
-        <div class="reward-history-item" style="display:flex; justify-content:space-between; align-items:center; padding:15px; border-bottom:1px solid var(--border)">
-          <div>
-            <div style="font-weight:500; font-size:14px;">${h.binName} Disposal</div>
-            <div style="font-size:11px; color:var(--text2); margin-top:4px;">${h.time} • ${h.volume} waste</div>
-          </div>
-          <div style="color:var(--green); font-weight:600; font-size:14px;">+${h.points} pts</div>
-        </div>
-      `).join('');
-    }
-  }
-}
-
-// SIMULATION FOR TESTING
-function simulateWasteDisposal() {
+// SIMULATION FOR TESTING (Simulated Bins Only)
+async function simulateWasteDisposal() {
   if (currentRole !== 'citizen') return;
-  handleQRSuccess("ecotrack:bin:bin_1");
-  setTimeout(() => {
-    const bin1 = binsData.find(b => b.id === 'bin_1');
-    if (bin1) {
-      const inc = Math.floor(Math.random() * 10) + 5;
-      bin1.fill = Math.min(100, bin1.fill + inc);
-      checkFillSpikeIntent(bin1, inc);
+  
+  // Target only simulated bins
+  const simBins = binsData.filter(b => b.isLive === false);
+  if (simBins.length === 0) return;
+  
+  const targetBin = simBins[Math.floor(Math.random() * simBins.length)];
+  const increment = Math.floor(Math.random() * 15) + 5; // +5% to +20% for manual disposal
+  const newFill = Math.min(100, targetBin.fill + increment);
+
+  console.log(`[SIMULATION] Updating ${targetBin.name} from ${targetBin.fill}% to ${newFill}%`);
+
+  // 1. Trigger QR logic locally (for reward intent)
+  handleQRSuccess(`ecotrack:bin:${targetBin.id}`);
+
+  // 2. Send update to LOCAL server so it persists
+  try {
+    const res = await fetch(`${LOCAL_API}/update`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        deviceId: targetBin.deviceId,
+        fill: newFill
+      })
+    });
+    
+    if (res.ok) {
+      checkFillSpikeIntent(targetBin, increment, newFill);
+      showToast(`Simulation: ${targetBin.name} updated!`, 'info');
     }
-  }, 3000);
+  } catch (err) {
+    console.error('[SIM ERROR]', err);
+  }
 }
 
 // ==========================================
@@ -1089,7 +1118,7 @@ function fetchLeaderboard() {
   }, 800);
 }
 
-function awardPoints(bin, increase) {
+async function awardPoints(bin, increase) {
   userPoints += increase; // 1 point per 1% fill
   const history = {
     time: new Date().toLocaleString('en-IN'),
@@ -1103,6 +1132,24 @@ function awardPoints(bin, increase) {
   
   localStorage.setItem(`ecoTrack_points_${currentUser}`, userPoints);
   localStorage.setItem(`ecoTrack_history_${currentUser}`, JSON.stringify(rewardHistory));
+  
+  // Sync to Supabase
+  if (window.supabase) {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        const { error } = await supabase
+          .from('users')
+          .update({ points: userPoints })
+          .eq('id', session.user.id);
+        if (error) throw error;
+        console.log(`[POINTS] Synced ${userPoints} to Supabase for ${session.user.id}`);
+      }
+    } catch (err) {
+      console.warn('[POINTS] Failed to sync to Supabase:', err.message);
+    }
+  }
+
   updateRewardsUI();
   showToast(`EcoPoints Earned! +${increase} for cleaning ${bin.name}`, 'success');
 }

@@ -24,5 +24,13 @@ CREATE POLICY "Users can view their own data"
   FOR SELECT
   USING (auth.uid() = id);
 
--- 4. Create policies for collectors to view user data if needed (optional for now)
+-- 4. Create policy so users can update their own data (needed for points)
+CREATE POLICY "Users can update their own data"
+  ON public.users
+  FOR UPDATE
+  USING (auth.uid() = id)
+  WITH CHECK (auth.uid() = id);
+
+-- 5. Create policies for collectors to view user data if needed (optional for now)
 -- CREATE POLICY "Collectors can view all users" ON public.users FOR SELECT USING (role = 'collector');
+
