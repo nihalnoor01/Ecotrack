@@ -743,8 +743,13 @@ let distChart;
 
 function initCharts() {
   try {
-  const ctx = document.getElementById('distributionChart');
+  const ctx = document.getElementById('donutChart');
   if (!ctx) return;
+
+  const styles = getComputedStyle(document.documentElement);
+  const red = styles.getPropertyValue('--red').trim() || '#ef4444';
+  const yellow = styles.getPropertyValue('--yellow').trim() || '#eab308';
+  const green = styles.getPropertyValue('--green').trim() || '#22c55e';
   
   distChart = new Chart(ctx, {
     type: 'doughnut',
@@ -753,19 +758,20 @@ function initCharts() {
       datasets: [{
         data: [0, 0, 0, 0],
         backgroundColor: [
-          '#ef4444', // Red
-          '#eab308', // Yellow
-          '#22c55e', // Green
-          '#64748b'  // Gray
+          red,
+          yellow,
+          green,
+          '#94a3b8'
         ],
+        borderColor: 'transparent',
         borderWidth: 0,
-        hoverOffset: 4
+        hoverOffset: 8
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      cutout: '75%',
+      cutout: '72%',
       plugins: {
         legend: { display: false },
         tooltip: {
@@ -796,15 +802,21 @@ function updateCharts() {
   distChart.data.datasets[0].data = [critical, warning, normal, empty];
   distChart.update();
   
-  // Update Center Text
-  const centerText = document.getElementById('chartCenterText');
-  if (centerText) {
-    const totalFill = binsData.reduce((sum, b) => sum + b.fill, 0);
-    const avgFill = binsData.length ? Math.round(totalFill / binsData.length) : 0;
-    centerText.innerHTML = `<div style="text-align:center">
-      <div style="font-size:24px;font-weight:700;color:var(--text)">${avgFill}%</div>
-      <div style="font-size:12px;color:var(--text2)">Average</div>
-    </div>`;
+  const totalFill = binsData.reduce((sum, b) => sum + b.fill, 0);
+  const avgFill = binsData.length ? Math.round(totalFill / binsData.length) : 0;
+  const donutPercent = document.getElementById('donutPercent');
+  if (donutPercent) {
+    donutPercent.innerText = `${avgFill}%`;
+  }
+
+  const legend = document.getElementById('donutLegend');
+  if (legend) {
+    legend.innerHTML = `
+      <div class="legend-item"><span class="dot" style="background:var(--red)"></span> Critical: ${critical}</div>
+      <div class="legend-item"><span class="dot" style="background:var(--yellow)"></span> Warning: ${warning}</div>
+      <div class="legend-item"><span class="dot" style="background:var(--green)"></span> Normal: ${normal}</div>
+      <div class="legend-item"><span class="dot" style="background:#94a3b8"></span> Empty: ${empty}</div>
+    `;
   }
 }
 
@@ -1197,4 +1209,3 @@ function updateRewardsUI() {
     }
   }
 }
-
